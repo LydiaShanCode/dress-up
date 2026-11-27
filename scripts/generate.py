@@ -47,7 +47,7 @@ def main():
                     help='refuse to run past this many dollars this month (default $5, or MONTHLY_CAP)')
     a = ap.parse_args()
 
-    folder = Path(a.folder)
+    folder = Path(a.folder).resolve()
     text = (folder / 'PROMPT.txt').read_text()
     prompt = text.split('-' * 20, 1)[-1].lstrip('-\n ').strip()
     images = sorted(p for p in folder.iterdir() if p.name[0].isdigit() and p.suffix.lower() in ('.jpg', '.jpeg', '.png', '.webp'))

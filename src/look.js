@@ -65,7 +65,7 @@ function render() {
     ? worn.slice().sort((a, b) => b.z - a.z).map((i) => (i.url ? `<a class="what" href="${i.url}" target="_blank" rel="noopener">${i.name}</a>` : `<span class="what">${i.name}</span>`)).join('')
     : '<span class="what">Black sports bra, black shorts</span>';
   canvas.setAttribute('aria-label', worn.length ? `You wearing ${worn.map((i) => i.name).join(', ')}` : 'You in a black sports bra and black shorts');
-  for (const b of closetEl.querySelectorAll('button')) b.setAttribute('aria-pressed', String((outfit[b.dataset.slot] ?? null) === (b.dataset.id || null)));
+  for (const b of closetEl.querySelectorAll('.card')) b.setAttribute('aria-pressed', String(outfit[b.dataset.slot] === b.dataset.id));
   localStorage.setItem(KEY, JSON.stringify(outfit));
 }
 
@@ -73,9 +73,12 @@ function wear(slot, id) {
   outfit[slot] = id;
   render();
 }
+const isWorn = (it) => outfit[it.slot] === it.id;
+const toggle = (it) => wear(it.slot, isWorn(it) ? null : it.id);
 
+// ---------- closet: cards you drag onto the model (or click) ----------
 function buildCloset() {
-  closetEl.innerHTML = '';
+  closetEl.innerHTML = '<p class="closet-title">Closet</p>';
   for (const [slot, label] of SLOTS) {
     const items = closet.items.filter((i) => i.slot === slot);
     if (!items.length) continue;
@@ -84,16 +87,14 @@ function buildCloset() {
     group.innerHTML = `<p class="slot-label">${label}</p>`;
     const row = document.createElement('div');
     row.className = 'slot-items';
-    const none = document.createElement('button');
-    none.dataset.slot = slot; none.dataset.id = '';
-    none.className = 'none'; none.textContent = 'None';
-    none.addEventListener('click', () => wear(slot, null));
-    row.appendChild(none);
     for (const it of items) {
       const b = document.createElement('button');
-      b.dataset.slot = slot; b.dataset.id = it.id; b.title = it.name;
-      b.innerHTML = `<img src="${it.src}" alt="${it.name}">`;
-      b.addEventListener('click', () => wear(slot, it.id));
+      b.className = 'card';
+      b.dataset.slot = slot; b.dataset.id = it.id;
+      b.title = `${it.name}. Drag onto yourself, or click to wear`;
+      b.innerHTML = `<img src="${it.src}" alt="${it.name}" draggable="false">`;
+      b.addEventListener('pointerdown', (e) => startDrag(e, it, b.querySelector('img')));
+      b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(it); } });
       row.appendChild(b);
     }
     group.appendChild(row);
@@ -101,11 +102,94 @@ function buildCloset() {
   }
 }
 
+// Pointer-based drag (works with mouse and touch). A short press without moving = click.
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let drag = null;
+
+function startDrag(e, it, fromImg, fromModel = false) {
+  if (e.button !== undefined && e.button !== 0) return;
+  e.preventDefault();
+  const r = fromImg ? fromImg.getBoundingClientRect() : null;
+  drag = { it, x0: e.clientX, y0: e.clientY, moved: false, fromModel, ghost: null, rect: r };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp, { once: true });
+}
+
+function makeGhost(it, e) {
+  const g = document.createElement('img');
+  g.className = 'drag-ghost';
+  g.src = it.src;
+  // size the ghost like the garment will look on the model, so the drop feels physical
+  const mr = canvas.getBoundingClientRect();
+  g.style.width = `${it.box[2] * mr.width}px`;
+  g.style.height = `${it.box[3] * mr.height}px`;
+  document.body.appendChild(g);
+  drag.grab = [g.offsetWidth / 2, g.offsetHeight / 2];
+  if (drag.fromModel) { outfit[it.slot] = null; render(); }   // lift it off the body
+  return g;
+}
+
+function onMove(e) {
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
+  if (!drag.moved) { drag.moved = true; drag.ghost = makeGhost(drag.it, e); document.body.classList.add('dragging'); }
+  drag.ghost.style.transform = `translate(${e.clientX - drag.grab[0]}px, ${e.clientY - drag.grab[1]}px)`;
+  model.classList.toggle('drop-target', overModel(e));
+}
+
+const overModel = (e) => { const r = model.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
+
+function onUp(e) {
+  window.removeEventListener('pointermove', onMove);
+  const d = drag; drag = null;
+  document.body.classList.remove('dragging');
+  model.classList.remove('drop-target');
+  if (!d) return;
+  if (!d.moved) { if (!d.fromModel) toggle(d.it); return; }   // plain click
+  const g = d.ghost;
+  if (overModel(e)) {
+    // snap: fly the ghost into its exact fitted spot, then hand over to the canvas
+    const mr = canvas.getBoundingClientRect(), [x, y] = d.it.box;
+    const tx = mr.left + x * mr.width, ty = mr.top + y * mr.height;
+    if (reduceMotion) { g.remove(); wear(d.it.slot, d.it.id); return; }
+    g.style.transition = 'transform 260ms cubic-bezier(.2,.9,.3,1.15)';
+    g.style.transform = `translate(${tx}px, ${ty}px)`;
+    g.addEventListener('transitionend', () => { wear(d.it.slot, d.it.id); requestAnimationFrame(() => g.remove()); }, { once: true });
+  } else {
+    // dropped elsewhere: if it came off the model it stays off; fade the ghost out
+    g.style.transition = 'opacity 120ms linear';
+    g.style.opacity = '0';
+    g.addEventListener('transitionend', () => g.remove(), { once: true });
+    if (!d.fromModel) render();
+  }
+}
+
+// Drag a garment OFF the model: pick the top-most worn layer under the pointer.
+canvas.addEventListener('pointerdown', (e) => {
+  const worn = SLOTS.map(([s]) => closet.items.find((i) => i.id === outfit[s])).filter(Boolean).sort((a, b) => b.z - a.z);
+  const r = canvas.getBoundingClientRect();
+  const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
+  for (const it of worn) {
+    const [x, y, w, h] = it.box;
+    if (u < x || u > x + w || v < y || v > y + h) continue;
+    const img = cache.get(it.src);
+    if (!img) continue;
+    img.then((im) => {
+      const c = document.createElement('canvas'); c.width = 1; c.height = 1;
+      const cx = c.getContext('2d');
+      cx.drawImage(im, ((u - x) / w) * im.naturalWidth, ((v - y) / h) * im.naturalHeight, 1, 1, 0, 0, 1, 1);
+      if (cx.getImageData(0, 0, 1, 1).data[3] > 40 && !drag) startDrag(e, it, null, true);
+    });
+    break;
+  }
+});
+
 fetch('/closet/closet.json').then((r) => r.json()).catch(() => ({ items: [] })).then((c) => {
   closet = c;
   if (!closet.items.length) { closetEl.hidden = true; return render(); }
   const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
-  outfit = saved ?? Object.fromEntries(SLOTS.map(([s]) => [s, closet.items.find((i) => i.slot === s)?.id ?? null]));
+  outfit = saved ?? {};
+  for (const [s] of SLOTS) if (outfit[s] && !closet.items.some((i) => i.id === outfit[s])) outfit[s] = null;
   buildCloset();
   render();
 });
