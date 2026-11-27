@@ -114,8 +114,12 @@ function onMove(e) {
   if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
   if (!drag.moved) { drag.moved = true; drag.ghost = makeGhost(drag.it, e); document.body.classList.add('dragging'); }
   drag.ghost.style.transform = `translate(${e.clientX - drag.grab[0]}px, ${e.clientY - drag.grab[1]}px)`;
-  model.classList.toggle('drop-target', overModel(e));
+  const toCloset = overCloset(e);
+  closetEl.classList.toggle('drop-target', toCloset && drag.fromModel);
+  model.classList.toggle('drop-target', !toCloset && overModel(e) && !drag.fromModel);
 }
+
+const overCloset = (e) => { const r = closetEl.getBoundingClientRect(); return !closetEl.hidden && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
 
 const overModel = (e) => { const r = model.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
 
@@ -124,23 +128,41 @@ function onUp(e) {
   const d = drag; drag = null;
   document.body.classList.remove('dragging');
   model.classList.remove('drop-target');
+  closetEl.classList.remove('drop-target');
   if (!d) return;
   if (!d.moved) { if (!d.fromModel) toggle(d.it); return; }   // plain click
   const g = d.ghost;
-  if (overModel(e)) {
-    // snap: fly the ghost into its exact fitted spot, then hand over to the canvas
+  const fly = (rect, ms, ease, done, shrink = false) => {
+    if (reduceMotion) { g.remove(); done(); return; }
+    g.style.transition = `transform ${ms}ms ${ease}, opacity ${ms}ms ease-out`;
+    if (shrink) {
+      // shrink into the card, keeping the garment's proportions
+      const s2 = Math.min(rect.width / g.offsetWidth, rect.height / g.offsetHeight) * 0.85;
+      const tx = rect.left + (rect.width - g.offsetWidth * s2) / 2, ty = rect.top + (rect.height - g.offsetHeight * s2) / 2;
+      g.style.transformOrigin = '0 0';
+      g.style.transform = `translate(${tx}px, ${ty}px) scale(${s2})`;
+      g.style.opacity = '0.4';
+    } else {
+      g.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
+    }
+    g.addEventListener('transitionend', () => { done(); requestAnimationFrame(() => g.remove()); }, { once: true });
+  };
+  const onBody = () => {
     const mr = canvas.getBoundingClientRect(), [x, y] = d.it.box;
-    const tx = mr.left + x * mr.width, ty = mr.top + y * mr.height;
-    if (reduceMotion) { g.remove(); wear(d.it.slot, d.it.id); return; }
-    g.style.transition = 'transform 260ms cubic-bezier(.2,.9,.3,1.15)';
-    g.style.transform = `translate(${tx}px, ${ty}px)`;
-    g.addEventListener('transitionend', () => { wear(d.it.slot, d.it.id); requestAnimationFrame(() => g.remove()); }, { once: true });
+    return { left: mr.left + x * mr.width, top: mr.top + y * mr.height };
+  };
+  if (overCloset(e)) {
+    // put it away: shrink back into its card (takes it off if it was worn)
+    const card = closetEl.querySelector(`.card[data-id="${d.it.id}"]`);
+    fly(card.getBoundingClientRect(), 220, 'cubic-bezier(.3,.7,.2,1)', () => { if (isWorn(d.it)) wear(d.it.slot, null); else render(); }, true);
+  } else if (overModel(e) || d.fromModel) {
+    // dropped on the body, or let go somewhere random while taking it off: snap (back) on
+    fly(onBody(), 260, 'cubic-bezier(.2,.9,.3,1.15)', () => wear(d.it.slot, d.it.id));
   } else {
-    // dropped elsewhere: if it came off the model it stays off; fade the ghost out
+    // dragged out of the closet and dropped nowhere: just disappear
     g.style.transition = 'opacity 120ms linear';
     g.style.opacity = '0';
     g.addEventListener('transitionend', () => g.remove(), { once: true });
-    if (!d.fromModel) render();
   }
 }
 
