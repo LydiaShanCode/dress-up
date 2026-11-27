@@ -72,10 +72,16 @@ def main():
     load_key(KEYNAME[a.provider])
 
     def record():
-        log.append({'date': datetime.date.today().isoformat(), 'job': folder.name, 'provider': a.provider,
-                    'resolution': a.resolution, 'images': a.n, 'usd': round(cost, 3)})
+        # re-read right before writing (with a lock) so parallel runs can't drop each other's entry
+        import fcntl
         log_path.parent.mkdir(exist_ok=True)
-        log_path.write_text(json.dumps(log, indent=1))
+        with open(log_path, 'a+') as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.seek(0); text = fh.read()
+            entries = json.loads(text) if text.strip() else []
+            entries.append({'date': datetime.date.today().isoformat(), 'job': folder.name, 'provider': a.provider,
+                            'resolution': a.resolution, 'images': a.n, 'usd': round(cost, 3)})
+            fh.seek(0); fh.truncate(); fh.write(json.dumps(entries, indent=1))
 
     def out_path():
         n = len(list(folder.glob('RESULT*')))
@@ -92,14 +98,33 @@ def main():
             out = out_path(); urllib.request.urlretrieve(img['url'], out); print('saved', out.relative_to(ROOT))
         record()
     else:
-        import base64, json, mimetypes, urllib.error
+        import base64, io, json, mimetypes, urllib.error
+        from PIL import Image
+        # Lock the framing: pad image 1 (you) with its own backdrop color to the nearest
+        # supported shape, ask for exactly that shape, then crop the result back to your
+        # photo's area. Otherwise Gemini may pick its own framing and layers won't line up.
+        SHAPES = {'9:16': 9 / 16, '2:3': 2 / 3, '3:4': 3 / 4, '1:1': 1, '4:3': 4 / 3, '3:2': 3 / 2, '16:9': 16 / 9}
+        first = Image.open(images[0]).convert('RGB')
+        W, H = first.size
+        aspect = a.aspect if a.aspect != 'auto' else min(SHAPES, key=lambda k: abs(SHAPES[k] - W / H))
+        r = SHAPES.get(aspect, W / H)
+        PW, PH = (round(H * r), H) if W / H < r else (W, round(W / r))
+        ox, oy = (PW - W) // 2, (PH - H) // 2
+        padded = Image.new('RGB', (PW, PH), first.getpixel((2, 2)))
+        padded.paste(first, (ox, oy))
+        buf = io.BytesIO(); padded.save(buf, 'PNG')
+        datas = [('image/png', buf.getvalue())] + [(mimetypes.guess_type(p.name)[0] or 'image/png', p.read_bytes()) for p in images[1:]]
+
+        def uncrop(raw):
+            im = Image.open(io.BytesIO(raw)).convert('RGB').resize((PW, PH), Image.LANCZOS)
+            out = io.BytesIO(); im.crop((ox, oy, ox + W, oy + H)).save(out, 'PNG'); return out.getvalue()
+
         # REST generateContent (key in a header, never in the URL)
         body = {
             'contents': [{'parts': [{'text': prompt}] + [
-                {'inline_data': {'mime_type': mimetypes.guess_type(p.name)[0] or 'image/png',
-                                 'data': base64.b64encode(p.read_bytes()).decode()}} for p in images]}],
+                {'inline_data': {'mime_type': mt, 'data': base64.b64encode(d).decode()}} for mt, d in datas]}],
             'generationConfig': {'responseModalities': ['IMAGE'],
-                                 'imageConfig': ({'imageSize': a.resolution} if a.aspect == 'auto' else {'aspectRatio': a.aspect, 'imageSize': a.resolution})},
+                                 'imageConfig': {'aspectRatio': aspect, 'imageSize': a.resolution}},
         }
         url = f'https://generativelanguage.googleapis.com/v1beta/models/{a.gemini_model}:generateContent'
         for _ in range(a.n):
@@ -113,7 +138,7 @@ def main():
             imgs = [pt.get('inline_data') or pt.get('inlineData') for pt in parts if pt.get('inline_data') or pt.get('inlineData')]
             if not imgs:
                 sys.exit('No image returned: ' + json.dumps(res)[:400])
-            out = out_path(); out.write_bytes(base64.b64decode(imgs[-1]['data'])); print('saved', out.relative_to(ROOT))
+            out = out_path(); out.write_bytes(uncrop(base64.b64decode(imgs[-1]['data']))); print('saved', out.relative_to(ROOT))
         record()
 
 if __name__ == '__main__':

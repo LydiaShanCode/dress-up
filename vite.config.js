@@ -12,8 +12,8 @@ import { execFile } from 'node:child_process';
 const ROOT = process.cwd();
 const PY = path.join(ROOT, '.venv/bin/python');
 const CLOSET = path.join(ROOT, 'public/closet/closet.json');
-const BASE = path.join(ROOT, 'captures/base-v3.png');
-const BASE_CUTOUT = path.join(ROOT, 'captures/base-v3-cutout.png');
+const BASE = path.join(ROOT, 'captures/base-v4.png');
+const BASE_CUTOUT = path.join(ROOT, 'captures/base-v4-cutout.png');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131 Safari/537.36';
 
 const SLOT_WORDS = {
@@ -28,7 +28,7 @@ const PROMPT = {
   bottom: (n) => `Replace only her black shorts with the ${n} shown in image 2 (if a model wears it there, copy only the garment, not the model). Reproduce it faithfully: same color, wash, fabric, rise, fit, length, pockets and details. Because she is only 5'2", long legs bunch or stack naturally at the bottom. Keep her white socks visible below if the hem is above them.`,
   shoes: (n) => `Put the ${n} shown in image 2 on her feet, worn over her white ankle socks, exactly where her feet are now. Reproduce them faithfully: same color, material, shape and details.`,
 };
-const KEEP = `Image 1 is the person. Keep image 1 EXACTLY the same everywhere except that one garment: same face, hair, skin tone, body size and proportions, same pose (one hand on her hip, the other arm relaxed at her side), same smile, same position in the frame, same camera, same plain white backdrop and lighting, and all her other clothing unchanged. Output an image with exactly the same size, framing and composition as image 1.`;
+const KEEP = `Image 1 is the person. Keep image 1 EXACTLY the same everywhere except that one garment: same face, hair, skin tone, body size and proportions, same pose and arm position as image 1, same smile, same position in the frame, same camera, same plain white backdrop and lighting, and all her other clothing unchanged. Output an image with exactly the same size, framing and composition as image 1.`;
 
 const readJSON = (req) => new Promise((res, rej) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => { try { res(JSON.parse(b || '{}')); } catch (e) { rej(e); } }); });
 const send = (res, code, obj) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(obj)); };

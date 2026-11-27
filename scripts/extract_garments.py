@@ -121,6 +121,17 @@ def main():
             m = (upper > 110).astype(np.uint8) * 255
         elif slot == 'bottom':
             m = (lower > 110).astype(np.uint8) * 255  # full length: cuffs sit over the shoes
+            # cloth segmentation can stop just inside an edge (side piping, a hem); within the
+            # pants' area, also take everything the person mask covers, minus the top's sleeves
+            rows, cols = np.where(m > 0)
+            if len(rows):
+                area = np.zeros_like(m)
+                pad = int(w * 0.04)
+                area[rows.min():rows.max() + 1, max(0, cols.min() - pad):cols.max() + pad] = 255
+                sleeves = cv2.dilate((upper > 90).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+                extra = cv2.bitwise_and(person, area)
+                extra[sleeves] = 0
+                m = cv2.max(m, extra)
         elif slot == 'shoes':
             # the person (not floor or shadow) below the ankles, minus the trouser legs/cuffs
             m = person.copy()
@@ -157,6 +168,19 @@ def main():
         # the base cutout (base body where the try-on shows backdrop, e.g. feet that moved).
         on_body = cv2.dilate(person, np.ones((3, 3), np.uint8)) > 0
         erase = ((m > 0) & ~on_body & (base_person > 0)).astype(np.uint8) * 255
+        if slot in ('bottom', 'shoes'):
+            # anywhere in the garment's area where the render shows backdrop but the base has
+            # body (legs set wider apart, a gap between pant legs), remove the base body too
+            rr, cc = np.where(m > 0)
+            if len(rr):
+                area = np.zeros_like(m)
+                pad = int(w * 0.03)
+                area[rr.min():rr.max() + 1, max(0, cc.min() - pad):cc.max() + pad] = 255
+                gap = (area > 0) & (person == 0) & (base_person > 0)
+                erase[gap] = 255
+            # reach a few px under the garment's edge so no hairline of skin shows (the garment covers it)
+            under = cv2.dilate(erase, np.ones((7, 7), np.uint8)) & (m > 0)
+            erase[(under > 0) & (base_person > 0)] = 255
         paint = ((m > 0) & on_body).astype(np.uint8) * 255
 
         def save(mask, fname, rgb=True):
