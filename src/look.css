@@ -1,3 +1,5 @@
+/* Exposure is a 205TF TRIAL font: local design testing only, git-ignored, never commit or deploy it. */
+@font-face { font-family: 'Exposure'; src: url('/fonts/ExposureTrialVAR.ttf') format('truetype'); font-display: swap; }
 /* Follows ~/code/skills: design-taste.md + lydia-design.md. Editorial lookbook: model on pure white. */
 :root {
   --background: #ffffff;
@@ -82,3 +84,20 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
   .slot-items { grid-template-columns: none; grid-auto-flow: column; }
   .card { width: 52px; height: 64px; }
 }
+
+/* logo: debossed (pressed into the page) — darker fill, light edge below, faint shadow above */
+.logo {
+  position: absolute; top: 20px; left: 24px; z-index: 60;
+  display: flex; align-items: center; gap: 6px; pointer-events: none; user-select: none;
+}
+.logo-word {
+  font-family: 'Exposure', 'Geist', sans-serif; font-variation-settings: 'EXPO' 0;
+  font-size: 14px; line-height: 1; letter-spacing: -2px;
+  color: #e4e4e4;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .95), 0 -1px 0 rgba(0, 0, 0, .14);
+}
+.logo-mark {
+  font-size: 14px; line-height: 1;
+  filter: grayscale(1) brightness(1.55) contrast(.55) drop-shadow(0 1px 0 rgba(255, 255, 255, .95)) drop-shadow(0 -1px 0 rgba(0, 0, 0, .16));
+}
+@media (max-width: 760px) { .logo { top: 16px; left: 16px; } }
