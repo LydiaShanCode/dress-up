@@ -61,12 +61,13 @@ function buildCloset() {
   closetEl.innerHTML = '<p class="closet-title">Closet</p>';
   for (const [slot, label] of SLOTS) {
     const items = closet.items.filter((i) => i.slot === slot);
-    if (!items.length) continue;
     const group = document.createElement('div');
     group.className = 'slot';
     group.innerHTML = `<p class="slot-label">${label}</p>`;
     const row = document.createElement('div');
     row.className = 'slot-items';
+    row.dataset.slot = slot;
+    if (!items.length) row.innerHTML = '<p class="slot-empty">Drop a product link</p>';
     for (const it of items) {
       const b = document.createElement('button');
       b.className = 'card';
@@ -188,10 +189,93 @@ canvas.addEventListener('pointerdown', (e) => {
 
 fetch('/closet/closet.json').then((r) => r.json()).catch(() => ({ items: [] })).then((c) => {
   closet = c;
-  if (!closet.items.length) { closetEl.hidden = true; return render(); }
   const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
   outfit = saved ?? {};
   for (const [s] of SLOTS) if (outfit[s] && !closet.items.some((i) => i.id === outfit[s])) outfit[s] = null;
   buildCloset();
   render();
 });
+
+// ---------- drop a product link from a shopping tab to add it to the closet ----------
+const stage = document.querySelector('.look-stage');
+const dropHint = document.createElement('div');
+dropHint.className = 'drop-hint';
+dropHint.innerHTML = '<p>Drop to add to your closet</p>';
+stage.appendChild(dropHint);
+const sheet = document.createElement('div');
+sheet.className = 'add-sheet';
+sheet.hidden = true;
+stage.appendChild(sheet);
+
+const droppedUrl = (dt) => {
+  const uri = (dt.getData('text/uri-list') || '').split('\n').find((l) => l && !l.startsWith('#'));
+  const href = dt.getData('text/html').match(/href="([^"]+)"/)?.[1];
+  const text = dt.getData('text/plain');
+  return [uri, href, text].find((u) => u && /^https?:\/\//.test(u.trim()))?.trim();
+};
+const isLinkDrag = (e) => !drag && [...e.dataTransfer.types].some((t) => t === 'text/uri-list' || t === 'text/plain' || t === 'text/html');
+let dragDepth = 0;
+window.addEventListener('dragenter', (e) => { if (isLinkDrag(e)) { dragDepth++; stage.classList.add('link-over'); } });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; stage.classList.remove('link-over'); } });
+window.addEventListener('dragover', (e) => { if (isLinkDrag(e)) e.preventDefault(); });
+window.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  stage.classList.remove('link-over');
+  const url = droppedUrl(e.dataTransfer);
+  if (!url) return showSheet('<p class="sheet-msg">That drop had no product link. Drag the product photo or name from the shop tab.</p>', true);
+  showSheet('<p class="sheet-msg">Reading the product…</p>');
+  const r = await postJSON('/api/garment/preview', { url });
+  if (r.error) return showSheet(`<p class="sheet-msg">${r.error}</p>`, true);
+  if (r.owned) { sheet.hidden = true; wear(r.item.slot, r.item.id); return; } // already in your closet: free
+  addGarment(r); // new: add straight away (cost is known, ~$0.07)
+});
+
+const postJSON = (u, body) => fetch(u, { method: 'POST', body: JSON.stringify(body) })
+  .then((x) => x.json()).catch(() => ({ error: "The local server isn't running (npm run dev)." }));
+
+function showSheet(html, dismissable = false) {
+  sheet.innerHTML = html + (dismissable ? '<div class="sheet-actions"><button class="ghost" data-act="close">OK</button></div>' : '');
+  sheet.hidden = false;
+  sheet.querySelector('[data-act="close"]')?.addEventListener('click', () => { sheet.hidden = true; });
+}
+
+// Vertical band of the body each slot changes (fractions of the model's height).
+const BAND = { top: [0.17, 0.56], bottom: [0.42, 0.97], shoes: [0.84, 1] };
+
+async function addGarment(p) {
+  sheet.hidden = true;
+  // After 1s, show the grayscale dot-matrix shimmer: lighter dots scoped to the part of
+  // the body that's changing, plus a shimmering placeholder card in the closet.
+  const shimmer = document.createElement('div');
+  shimmer.className = 'gen-shimmer';
+  const [b0, b1] = BAND[p.slot] || [0, 1];
+  Object.assign(shimmer.style, { top: `${b0 * 100}%`, height: `${(b1 - b0) * 100}%` });
+  shimmer.setAttribute('role', 'status');
+  shimmer.setAttribute('aria-label', `Rendering ${p.name} on you`);
+  const row = closetEl.querySelector(`.slot-items[data-slot="${p.slot}"]`);
+  const ph = document.createElement('div');
+  ph.className = 'card generating';
+  ph.title = `Rendering ${p.name} on you`;
+  ph.innerHTML = '<img alt=""><span class="dots"></span>';
+  ph.querySelector('img').src = p.image;
+  const showTimer = setTimeout(() => {
+    model.appendChild(shimmer);
+    row?.querySelector('.slot-empty')?.remove();
+    (row || closetEl).appendChild(ph);
+  }, 1000);
+
+  const r = await postJSON('/api/garment/add', p);
+  clearTimeout(showTimer);
+  ph.remove();
+  if (r.error) {
+    shimmer.remove(); buildCloset(); render();
+    return showSheet(`<p class="sheet-msg">Couldn't add it: ${r.error}</p>`, true);
+  }
+  closet = await fetch('/closet/closet.json?t=' + Date.now()).then((x) => x.json());
+  buildCloset();
+  wear(r.item.slot, r.item.id);
+  // the dots fade out while the garment sharpens in; nothing moves
+  shimmer.classList.add('done');
+  setTimeout(() => shimmer.remove(), 500);
+}
