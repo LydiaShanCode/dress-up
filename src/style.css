@@ -102,3 +102,6 @@ button.secondary { width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.capture #panel, .capture .toolbar, .capture .hint, .capture .labels { display: none; }
+.capture #app { display: block; }

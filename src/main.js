@@ -101,9 +101,9 @@ const materials = {
   eyelashes: new THREE.MeshStandardMaterial({ map: loadTex('/human/eyelashes.png'), color: 0x111111, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
   // her hair is near-black
   hair: new THREE.MeshStandardMaterial({ map: loadTex('/human/hair.png'), color: 0x2a2420, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.55 }),
-  bra: bandMaterial({ color: 0x95a3a1, roughness: 0.85 }),
+  bra: bandMaterial({ color: 0x161518, roughness: 0.75 }),
   shorts: bandMaterial({ color: 0x1b1a1d, roughness: 0.8 }),
-  straps: bandMaterial({ color: 0x95a3a1, roughness: 0.85 }, 0.32),
+  straps: bandMaterial({ color: 0x161518, roughness: 0.75 }, 0.32),
 };
 const guideMat = new THREE.LineBasicMaterial({ color: 0x2f5bea, depthTest: false, transparent: true });
 
@@ -287,4 +287,28 @@ loadHuman().then((h) => {
   const fit = (L.top * 0.6) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   camera.position.set(0, L.top * 0.52, fit);
   loading.hidden = true;
+  if (new URLSearchParams(location.search).has('capture')) capture();
 });
+
+// ?capture=1 — front view on pure white, no UI, saved to ./captures for the photo step
+async function capture() {
+  document.body.classList.add('capture');
+  scene.background = new THREE.Color(0xffffff);
+  floor.visible = false;
+  key.castShadow = false;
+  const w = 1024, h = 2048;
+  renderer.setPixelRatio(1);
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.fov = 18;
+  camera.updateProjectionMatrix();
+  const d = (L.top * 0.56) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  controls.target.set(0, L.top * 0.5, 0);
+  camera.position.set(0, L.top * 0.5, d);
+  controls.update();
+  await new Promise((r) => setTimeout(r, 1500)); // textures
+  renderer.render(scene, camera);
+  const blob = await new Promise((r) => renderer.domElement.toBlob(r, 'image/png'));
+  await fetch('/__save?name=body-guide.png', { method: 'POST', body: blob });
+  document.title = 'captured';
+}

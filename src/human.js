@@ -153,7 +153,7 @@ export class Body {
     this.sides = lk.x > 0 ? { legL: 'l', legR: 'r', armL: 'l', armR: 'r' } : { legL: 'r', legR: 'l', armL: 'r', armR: 'l' };
 
     // relaxed arms, closer to how she stands in the video
-    this.lowerArms(THREE.MathUtils.degToRad(20));
+    this.lowerArms(THREE.MathUtils.degToRad(11));
 
     // 2–3. heights, then girths; repeat because each step nudges the others
     for (let pass = 0; pass < 6; pass++) {

@@ -9,31 +9,30 @@
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <main id="app">
-      <aside id="panel" aria-label="Your measurements">
+    <main class="look-app">
+      <aside class="look-panel" aria-label="Your measurements">
         <header>
           <p class="overline">Dress Up</p>
-          <h1>Your measurements</h1>
-          <p id="summary" class="summary"></p>
+          <h1>You, as the model</h1>
+          <p class="summary" id="summary"></p>
         </header>
-        <form id="fields" autocomplete="off" onsubmit="return false"></form>
+        <dl id="measurements" class="measure-list"></dl>
         <footer>
-          <p class="note">✓ means the 3D body measures exactly your number. The weight column shows what the body's volume would weigh.</p>
-          <button id="reset" type="button" class="secondary">Reset to my measurements</button>
+          <p class="note">Your model is posed from a 3D body fitted to these measurements, then photographed with your face, hair and skin tone.</p>
+          <a class="secondary-link" href="/studio.html">Open the 3D fit studio</a>
         </footer>
       </aside>
-      <section id="stage" aria-label="3D body">
-        <nav class="toolbar" aria-label="View">
-          <button data-view="0">Front</button>
-          <button data-view="90">Side</button>
-          <button data-view="180">Back</button>
-          <button id="spin" aria-pressed="false">Turntable</button>
-          <button id="guides" aria-pressed="false">Measurements</button>
-        </nav>
-        <p id="loading" class="loading" role="status">Building your body…</p>
-        <p class="hint">Drag to turn · Scroll to zoom</p>
+
+      <section class="look-stage" aria-label="Your model">
+        <figure class="look">
+          <img id="look-img" src="/looks/base.jpg" alt="You as a full-length model in a black sports bra and black shorts" />
+          <figcaption>
+            <span class="who">You</span>
+            <span class="what" id="look-caption">Black sports bra, black shorts</span>
+          </figcaption>
+        </figure>
       </section>
     </main>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/look.js"></script>
   </body>
 </html>
