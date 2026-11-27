@@ -123,6 +123,8 @@ Everything that is not this item is a flat, solid, pure green background (${KEY}
 // position; everything that isn't the item becomes key green for a clean cutout.
 const ISOLATE = (slot, name) => `Image 1 shows a person wearing a ${WHAT[slot]}: the ${name}.
 
+DO NOT ZOOM, CROP, REFRAME OR RESIZE: the output must be the same full-length shot as image 1, at the same scale, with the camera exactly where it is; the item stays at exactly the same pixel position and size as in image 1, with the same empty space around it.
+
 Edit image 1: keep ONLY that ${WHAT[slot]} exactly as it is, with the same position, size, outline, folds, colors, prints and details, perfectly aligned to image 1. Replace EVERYTHING else with flat, solid, pure green (${KEY}): her skin, face, hair, neck, hands, arms, legs and feet, all of her other clothing, and the background. Where her body showed through openings of the item (neckline, armholes, sleeves, waistband, leg openings), fill with green or the inside of the garment. Do not redraw, move, resize, straighten or restyle the item. No shadows or gradients in the green. Output exactly the same size and framing as image 1.`;
 
 const readJSON = (req) => new Promise((res, rej) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => { try { res(JSON.parse(b || '{}')); } catch (e) { rej(e); } }); });
