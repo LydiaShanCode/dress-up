@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import crypto from 'node:crypto';
 
 /*
  * Dev-only "add to closet" API (runs on your Mac; the Gemini key never reaches the page).
@@ -77,7 +78,28 @@ const PROMPT = {
   hat: (n) => `Put the ${n} shown in image 2 on her head (if a person wears it there, copy only the hat). Cool, editorial vibe: she wears it low on her head, pulled down so the brim or front edge shades and partly covers her eyes, at a realistic size for her head; her hair falls naturally out from under it at the sides and back, keeping its length and color. Reproduce the hat's shape, brim, crown, material, color, stitching and any logo exactly. Keep her smile, mouth and the rest of her face below the eyes unchanged.`,
   shoes: (n) => `Put the ${n} shown in image 2 on her feet, worn over her white ankle socks, exactly where her feet are now. Reproduce them faithfully: same color, material, shape and details.`,
 };
-const KEEP = `Image 1 is the person. Keep image 1 EXACTLY the same everywhere except that one garment: same face, hair, skin tone, body size and proportions, same pose and arm position as image 1, same smile, same position in the frame, same camera, same plain white backdrop and lighting, and all her other clothing unchanged. Output an image with exactly the same size, framing and composition as image 1.`;
+const KEEP_OLD = `Image 1 is the person. Keep image 1 EXACTLY the same everywhere except that one garment: same face, hair, skin tone, body size and proportions, same pose and arm position as image 1, same smile, same position in the frame, same camera, same plain white backdrop and lighting, and all her other clothing unchanged. Output an image with exactly the same size, framing and composition as image 1.`;
+
+// Garment-only render: image 1 sets position, pose and fit; the output contains ONLY the
+// garment (no body parts) on solid key green, so the cutout is a clean color key.
+const KEY = '#00FF00';
+const WHAT = {
+  top: 'top / upper-body garment', bottom: 'bottoms', shoes: 'pair of shoes', hat: 'hat', eyewear: 'eyewear',
+};
+const PLACE = {
+  top: 'exactly where it would sit on her upper body in image 1: same shoulders, torso, sleeve positions following her arms, and length',
+  bottom: "exactly where they would sit on her lower body in image 1: same waist, hips, leg positions and length; because she is only 5'2\", long legs bunch or stack at the hem",
+  shoes: 'exactly where her feet are in image 1, same size, angle and position',
+  hat: 'exactly where it would sit on her head in image 1, worn low so the brim or front edge sits at eye level (cool editorial vibe), at a realistic size for her head',
+  eyewear: 'exactly where they would sit on her face in image 1, on her nose and over her ears, sized for her face, with dark lenses',
+};
+const GHOST = (slot, name) => `Image 1 shows a person, only to set position, size, pose and framing. Image 2 shows the product: the ${name}.
+
+Create an image of ONLY that ${WHAT[slot]} from image 2, rendered ${PLACE[slot]}. It must look exactly as if worn by her (same fit, folds, drape, stretch and perspective), but she is completely invisible: draw NO body parts at all, no skin, face, hair, neck, hands, arms, legs or feet, and no other clothing. Where her body would show through an opening (neckline, sleeves, waistband, leg openings), show the inside of the garment or the green background.
+
+Copy the product exactly: color, pattern, prints, logos, stitching, hardware and details. If a model wears it in image 2, copy only the item.
+
+Everything that is not this item is a flat, solid, pure green background (${KEY}), with no shadows, gradients or floor. Output exactly the same size, framing and composition as image 1, so the item lines up with where her body is.`;
 
 const readJSON = (req) => new Promise((res, rej) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => { try { res(JSON.parse(b || '{}')); } catch (e) { rej(e); } }); });
 const send = (res, code, obj) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(obj)); };
@@ -85,7 +107,8 @@ const closet = () => (fs.existsSync(CLOSET) ? JSON.parse(fs.readFileSync(CLOSET,
 const idFor = (url) => {
   const u = new URL(url);
   const num = u.pathname.match(/(\d{4,})/)?.[1];
-  return (u.hostname.replace(/^www\.|^global\./, '').split('.')[0] + '-' + (num || Buffer.from(u.pathname).toString('base64url').slice(0, 12))).toLowerCase();
+  const key = num || crypto.createHash('sha1').update(u.pathname.replace(/\/$/, '')).digest('hex').slice(0, 10);
+  return (u.hostname.replace(/^www\.|^global\./, '').split('.')[0] + '-' + key).toLowerCase();
 };
 const run = (cmd, args) => new Promise((res, rej) => execFile(cmd, args, { cwd: ROOT, maxBuffer: 1 << 24, timeout: 600000 }, (err, out, errOut) => (err ? rej(new Error((errOut || out || err.message).split('\n').filter((l) => !/warn/i.test(l)).slice(-6).join('\n'))) : res(out))));
 
@@ -129,7 +152,7 @@ function garmentApi() {
         try {
           const { url } = await readJSON(req);
           const id = idFor(url);
-          const owned = closet().items.find((i) => i.url === url || i.id.startsWith(id + '-') || i.id === id);
+          const owned = closet().items.find((i) => i.url === url || SLOT_ORDER.some((s) => i.id === `${id}-${s}`));
           if (owned) return send(res, 200, { owned: true, item: owned });
           const p = await readProduct(url);
           send(res, 200, { owned: false, id, url, ...p, slot: await guessSlot(p.name, p.image), cost: 0.07 });
@@ -264,14 +287,14 @@ async function processJob(id) {
       }
     }
     if (!fs.existsSync(path.join(dir, 'PROMPT.txt'))) {
-      fs.writeFileSync(path.join(dir, 'PROMPT.txt'), `Generated by the drop-to-closet flow.\n${'-'.repeat(40)}\n${KEEP}\n\n${PROMPT[job.slot](job.name)}\n\n${MATERIAL(job.material)}\n\nRealistic fabric folds. Photorealistic.\n`);
+      fs.writeFileSync(path.join(dir, 'PROMPT.txt'), `Generated by the drop-to-closet flow (garment only).\n${'-'.repeat(40)}\n${GHOST(job.slot, job.name)}\n\n${MATERIAL(job.material)}\n\nRealistic fabric folds. Photorealistic.\n`);
     }
     if (!fs.existsSync(result)) {
       job = saveJob({ id, status: 'generating' });
       await run(PY, ['scripts/generate.py', dir, '--provider', 'gemini', '--resolution', '1K', '--yes']);
     }
     job = saveJob({ id, status: 'cutting' });
-    await run(PY, ['scripts/extract_garments.py', '--base', BASE, '--base-cutout', BASE_CUTOUT, '--tryon', result,
+    await run(PY, ['scripts/extract_garments.py', '--ghost', '--base', BASE, '--base-cutout', BASE_CUTOUT, '--tryon', result,
       '--piece', `${job.slot}:${id}:${job.name.replace(/:/g, ' ')}:${job.url}`]);
     const c = closet();
     c.base = c.base || '/looks/base.png';

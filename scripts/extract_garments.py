@@ -82,13 +82,59 @@ def clean(mask, close=25, min_area=4000):
     return filled
 
 
+def ghost_main(a):
+    """Garment-only renders: the item alone on solid key green, framed like the base. The layer is
+    simply everything that isn't green: no segmentation and no body parts to remove."""
+    base = load(a.base)
+    h, w = base.shape[:2]
+    img = load(a.tryon, (w, h))
+    f = img.astype(np.float32)
+    r, g, b = f[..., 0], f[..., 1], f[..., 2]
+    # "greenness": how far green exceeds the stronger of red/blue (0 for neutral or other colors)
+    green = np.clip(g - np.maximum(r, b), 0, 255)
+    alpha = np.clip(255 - (green - 40) * (255 / 80), 0, 255).astype(np.uint8)  # soft edge between 40 and 120
+    # despill: pull leftover green fringe on edges back toward neutral
+    spill = np.clip(g - np.maximum(r, b), 0, None)
+    f[..., 1] = g - spill * (1 - alpha / 255.0) - np.clip(spill - 10, 0, None) * (alpha / 255.0) * 0.6
+    img = np.clip(f, 0, 255).astype(np.uint8)
+    # drop specks and stray background bits; keep real parts (e.g. two shoes, both lenses)
+    solid = (alpha > 128).astype(np.uint8)
+    n, labs, stats, _ = cv2.connectedComponentsWithStats(solid)
+    keep = np.zeros_like(solid)
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] >= 150:
+            keep[labs == i] = 1
+    keep = cv2.dilate(keep, np.ones((5, 5), np.uint8))
+    alpha = (alpha * keep).astype(np.uint8)
+
+    os.makedirs(OUT, exist_ok=True)
+    manifest_path = os.path.join(OUT, 'closet.json')
+    closet = json.load(open(manifest_path)) if os.path.exists(manifest_path) else {'base': None, 'size': [w, h], 'items': []}
+    for spec in a.piece:
+        slot, pid, name, *url = spec.split(':', 3)
+        if not (alpha > 8).any():
+            raise SystemExit('Nothing but background in the render')
+        x, y, bw, bh = cv2.boundingRect((alpha > 8).astype(np.uint8))
+        fname = f'{pid}.png'
+        Image.fromarray(np.dstack([img, alpha])[y:y + bh, x:x + bw]).save(os.path.join(OUT, fname), optimize=True)
+        item = {'id': pid, 'slot': slot, 'name': name, 'url': url[0] if url else None,
+                'src': f'/closet/{fname}', 'box': [round(x / w, 5), round(y / h, 5), round(bw / w, 5), round(bh / h, 5)],
+                'erase': None, 'z': Z[slot]}
+        closet['items'] = [i for i in closet['items'] if i['id'] != pid] + [item]
+        print(f'  {slot:6} {pid}: box {x},{y} {bw}x{bh} (garment only)')
+    json.dump(closet, open(manifest_path, 'w'), indent=2)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--base', required=True)
     ap.add_argument('--tryon', required=True)
     ap.add_argument('--base-cutout', help='RGBA cutout of the base; its alpha is the base body mask')
     ap.add_argument('--piece', action='append', required=True, help='slot:id:name[:url]')
+    ap.add_argument('--ghost', action='store_true', help='render is the garment alone on key green (no body)')
     a = ap.parse_args()
+    if a.ghost:
+        return ghost_main(a)
 
     base = load(a.base)
     h, w = base.shape[:2]
