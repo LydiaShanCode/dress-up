@@ -13,32 +13,17 @@
 html, body { margin: 0; height: 100%; background: var(--background); }
 :focus-visible { outline: 2px solid #111111; outline-offset: 2px; border-radius: 4px; }
 
-.look-app { display: grid; grid-template-columns: clamp(248px, 22vw, 300px) 1fr; height: 100dvh; }
+.look-app { display: grid; grid-template-columns: 1fr; height: 100dvh; }
 
-.look-panel {
-  padding: 32px 24px 24px; display: flex; flex-direction: column; gap: 24px;
-  overflow-y: auto; scrollbar-width: none; border-right: 1px solid var(--border);
-}
-.look-panel::-webkit-scrollbar { display: none; }
-.overline { font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--text-secondary); margin: 0 0 8px; }
-h1 { font-size: 24px; font-weight: 600; line-height: 1.15; letter-spacing: -.02em; margin: 0; }
-.summary { margin: 8px 0 0; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
-.measure-list { margin: 0; }
-.measure-list .group { font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--text-secondary); margin: 16px 0 4px; }
-.measure-list .group:first-child { margin-top: 0; }
-.measure-list .item { display: flex; justify-content: space-between; align-items: baseline; min-height: 28px; font-size: 14px; }
-.measure-list dt { color: var(--text-primary); }
-.measure-list dd { margin: 0; font-family: 'Geist Mono', monospace; font-size: 13px; }
-.measure-list dd i { font-style: normal; color: var(--text-secondary); }
 
-footer { margin-top: auto; }
-.note { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 12px; }
-.secondary-link {
-  display: flex; align-items: center; justify-content: center; height: 32px; border-radius: 8px;
-  border: 1px solid var(--border); font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none;
-}
-.secondary-link:hover { background: var(--surface); }
+
+
+
+
+
+
+
 
 /* solid backdrop matched to the studio sweep in the photo, so the image has no visible edge */
 .look-stage { --sweep: #fefefe; background: var(--sweep); display: flex; justify-content: center; padding: 24px 24px 20px; min-width: 0; min-height: 0; overflow: hidden; }
@@ -49,9 +34,8 @@ footer { margin-top: auto; }
 .look .what { color: var(--text-secondary); }
 
 @media (max-width: 760px) {
-  .look-app { grid-template-columns: 1fr; height: auto; }
-  .look-stage { order: -1; height: 86dvh; padding: 16px; }
-  .look-panel { border-right: 0; border-top: 1px solid var(--border); }
+  .look-app { height: 100dvh; }
+  .look-stage { height: 100dvh; padding: 16px 16px calc(112px + env(safe-area-inset-bottom)); }
 }
 
 /* the model: base photo + garment layers positioned in base-photo percentages */
