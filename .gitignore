@@ -4,3 +4,5 @@ dist
 assets-src
 captures
 public/looks
+.venv
+public/closet

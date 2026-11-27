@@ -43,12 +43,7 @@ footer { margin-top: auto; }
 /* solid backdrop matched to the studio sweep in the photo, so the image has no visible edge */
 .look-stage { --sweep: #efeff1; background: var(--sweep); display: flex; justify-content: center; padding: 24px 24px 20px; min-width: 0; min-height: 0; overflow: hidden; }
 .look { margin: 0; height: 100%; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.look img {
-  flex: 1 1 0; min-height: 0; width: auto; max-width: 100%; object-fit: contain; display: block;
-  /* feather the photo's edges into the backdrop */
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent), linear-gradient(to bottom, transparent, #000 4%, #000 96%, transparent);
-  -webkit-mask-composite: source-in; mask-composite: intersect;
-}
+
 .look figcaption { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 13px; }
 .look .who { font-weight: 600; }
 .look .what { color: var(--text-secondary); }
@@ -59,25 +54,35 @@ footer { margin-top: auto; }
   .look-panel { border-right: 0; border-top: 1px solid var(--border); }
 }
 
-/* look switcher: floating thumbnail bar over the backdrop */
-.look-stage { position: relative; }
-.look-switcher {
-  position: absolute; left: 24px; top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; gap: 8px; padding: 8px;
-  background: rgba(255, 255, 255, .9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 4px 24px rgba(0, 0, 0, .06);
-}
-.look-switcher[hidden] { display: none; }
-.look-switcher button {
-  width: 48px; height: 80px; padding: 0; border: 1px solid transparent; border-radius: 8px;
-  background: var(--sweep); overflow: hidden; cursor: pointer;
-}
-.look-switcher button img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
-.look-switcher button[aria-pressed="true"] { border-color: #111111; }
+/* the model: base photo + garment layers positioned in base-photo percentages */
+.model { position: relative; flex: 1 1 0; min-height: 0; aspect-ratio: 1536 / 2752; max-width: 100%;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent), linear-gradient(to bottom, transparent, #000 4%, #000 96%, transparent);
+  -webkit-mask-composite: source-in; mask-composite: intersect; }
+.model .base { width: 100%; height: 100%; display: block; }
+.model .layer { position: absolute; display: block; pointer-events: none; }
 .look figcaption a.what { color: var(--text-secondary); text-decoration: none; }
 .look figcaption a.what:hover { color: var(--text-primary); text-decoration: underline; }
 
+/* closet: floating panel over the backdrop */
+.look-stage { position: relative; }
+.closet {
+  position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 50;
+  display: flex; flex-direction: column; gap: 16px; padding: 12px;
+  background: rgba(255, 255, 255, .9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 4px 24px rgba(0, 0, 0, .06);
+}
+.closet[hidden] { display: none; }
+.slot-label { margin: 0 0 6px; font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--text-secondary); }
+.slot-items { display: flex; gap: 6px; }
+.slot-items button {
+  width: 56px; height: 56px; padding: 4px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--sweep); cursor: pointer; font: inherit; font-size: 11px; color: var(--text-secondary);
+}
+.slot-items button img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.slot-items button.none { background: #fff; }
+.slot-items button[aria-pressed="true"] { border-color: #111111; box-shadow: inset 0 0 0 1px #111111; color: var(--text-primary); }
+
 @media (max-width: 760px) {
-  .look-switcher { top: auto; bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); flex-direction: row; }
-  .look-switcher button { width: 44px; height: 64px; }
+  .closet { top: auto; bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); flex-direction: row; gap: 12px; padding: 8px 12px; }
+  .slot-items button { width: 44px; height: 44px; }
 }
