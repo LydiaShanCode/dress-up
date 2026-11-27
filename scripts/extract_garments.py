@@ -92,16 +92,27 @@ def ghost_main(a):
     r, g, b = f[..., 0], f[..., 1], f[..., 2]
     # "greenness": how far green exceeds the stronger of red/blue (0 for neutral or other colors)
     green = np.clip(g - np.maximum(r, b), 0, 255)
-    alpha = np.clip(255 - (green - 40) * (255 / 80), 0, 255).astype(np.uint8)  # soft edge between 40 and 120
+    # Over pure key green, a pixel's green excess falls in proportion to how opaque the fabric is
+    # (half-sheer black mesh -> half-strength green), so opacity = 1 - excess/255. Proportional,
+    # so sheer and mesh stay partly see-through instead of being deleted. Small floor/ceiling
+    # snap: slightly shaded backdrop -> fully clear, nearly solid fabric -> fully solid.
+    opacity = 1 - green / 255.0
+    opacity = np.clip((opacity - 0.10) / 0.82, 0, 1)
+    alpha = (opacity * 255).astype(np.uint8)
     # Un-mix: a partly covered pixel is a = alpha share of garment over pure key green, so
     # garment = (pixel - (1 - a) * green) / a. This recovers thin white ties, lace and hair-fine
     # edges as their real color instead of light green.
     av = (alpha / 255.0)[..., None]
     keyc = np.array([0, 255, 0], np.float32)
-    unmixed = (f - (1 - av) * keyc) / np.maximum(av, 0.15)
+    unmixed = (f - (1 - av) * keyc) / np.maximum(av, 0.08)
     f = np.where(av < 0.98, unmixed, f)
     # any green cast left on solid pixels: clamp green to the stronger of red/blue (classic despill)
-    f[..., 1] = np.minimum(f[..., 1], (f[..., 0] + f[..., 2]) / 2 + 4)  # green bounce off the key → neutral
+    # Neutralize green bounce off the key, but not on genuinely green garments (olive, moss,
+    # sage): if the solid area is consistently green, only clean the soft edges.
+    solid_px = f[alpha > 245]
+    real_green = len(solid_px) and np.median(solid_px[:, 1] - (solid_px[:, 0] + solid_px[:, 2]) / 2) > 6
+    cap = np.minimum(f[..., 1], (f[..., 0] + f[..., 2]) / 2 + 4)
+    f[..., 1] = np.where(alpha < 245, cap, f[..., 1]) if real_green else cap
     img = np.clip(f, 0, 255).astype(np.uint8)
     # drop specks and stray background bits; keep real parts (e.g. two shoes, both lenses)
     solid = (alpha > 128).astype(np.uint8)
