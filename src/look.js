@@ -59,13 +59,12 @@ const toggle = (it) => wear(it.slot, isWorn(it) ? null : it.id);
 // ---------- closet: cards you drag onto the model (or click) ----------
 function buildCloset() {
   closetEl.innerHTML = '';
+  // one continuous grid, filled top to bottom (hats, eyewear, tops, bottoms, shoes)
+  const row = document.createElement('div');
+  row.className = 'slot-items';
+  closetEl.appendChild(row);
   for (const [slot] of SLOTS) {
     const items = closet.items.filter((i) => i.slot === slot);
-    const group = document.createElement('div');
-    group.className = 'slot';
-    const row = document.createElement('div');
-    row.className = 'slot-items';
-    row.dataset.slot = slot;
     for (const it of items) {
       const b = document.createElement('button');
       b.className = 'card';
@@ -87,8 +86,6 @@ function buildCloset() {
       b.appendChild(x);
       row.appendChild(b);
     }
-    group.appendChild(row);
-    closetEl.appendChild(group);
   }
 }
 
@@ -304,7 +301,7 @@ function jobVisuals(job) {
     ui = { card, shimmer, slot: job.slot };
     jobUI.set(job.id, ui);
   }
-  const row = closetEl.querySelector(`.slot-items[data-slot="${job.slot}"]`) || closetEl;
+  const row = closetEl.querySelector('.slot-items') || closetEl;
   if (!ui.card.isConnected) row.appendChild(ui.card);
   return ui;
 }
@@ -326,7 +323,7 @@ async function finishJob(job) {
   closet = await fetch('/closet/closet.json', { cache: 'no-store' }).then((x) => x.json());
   buildCloset();
   // the closet was rebuilt: put still-pending cards back in their rows
-  for (const o of jobUI.values()) (closetEl.querySelector(`.slot-items[data-slot="${o.slot}"]`) || closetEl).appendChild(o.card);
+  for (const o of jobUI.values()) (closetEl.querySelector('.slot-items') || closetEl).appendChild(o.card);
   const item = job.item || closet.items.find((i) => i.id === job.id);
   if (item) wear(item.slot, item.id);
   if (ui) { ui.shimmer.classList.add('done'); setTimeout(() => ui.shimmer.remove(), 500); } // dots fade out as it appears
