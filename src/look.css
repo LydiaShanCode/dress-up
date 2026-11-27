@@ -129,3 +129,6 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 .card.generating img { opacity: .3; filter: grayscale(1); }
 .card.generating .dots { position: absolute; inset: 0; border-radius: inherit; }
 @media (prefers-reduced-motion: reduce) { .gen-shimmer, .card.generating .dots { animation: none; } }
+
+.card.generating.failed { cursor: pointer; border-style: dashed; }
+.card.generating.failed .dots { animation: none; opacity: .25; }

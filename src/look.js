@@ -239,38 +239,82 @@ function showSheet(html, dismissable = false) {
 // Vertical band of the body each slot changes (fractions of the model's height).
 const BAND = { top: [0.17, 0.56], bottom: [0.42, 0.97], shoes: [0.84, 1] };
 
+// ---------- jobs: adding a garment is a saved job on your Mac, so reloads can't lose it ----------
+const jobUI = new Map(); // id → { card, shimmer }
+let polling = null;
+
 async function addGarment(p) {
   sheet.hidden = true;
-  // After 1s, show the grayscale dot-matrix shimmer: lighter dots scoped to the part of
-  // the body that's changing, plus a shimmering placeholder card in the closet.
-  const shimmer = document.createElement('div');
-  shimmer.className = 'gen-shimmer';
-  const [b0, b1] = BAND[p.slot] || [0, 1];
-  Object.assign(shimmer.style, { top: `${b0 * 100}%`, height: `${(b1 - b0) * 100}%` });
-  shimmer.setAttribute('role', 'status');
-  shimmer.setAttribute('aria-label', `Rendering ${p.name} on you`);
-  const row = closetEl.querySelector(`.slot-items[data-slot="${p.slot}"]`);
-  const ph = document.createElement('div');
-  ph.className = 'card generating';
-  ph.title = `Rendering ${p.name} on you`;
-  ph.innerHTML = '<img alt=""><span class="dots"></span>';
-  ph.querySelector('img').src = p.image;
-  const showTimer = setTimeout(() => {
-    model.appendChild(shimmer);
-    (row || closetEl).appendChild(ph);
-  }, 1000);
-
   const r = await postJSON('/api/garment/add', p);
-  clearTimeout(showTimer);
-  ph.remove();
-  if (r.error) {
-    shimmer.remove(); buildCloset(); render();
-    return showSheet(`<p class="sheet-msg">Couldn't add it: ${r.error}</p>`, true);
-  }
-  closet = await fetch('/closet/closet.json?t=' + Date.now()).then((x) => x.json());
-  buildCloset();
-  wear(r.item.slot, r.item.id);
-  // the dots fade out while the garment sharpens in; nothing moves
-  shimmer.classList.add('done');
-  setTimeout(() => shimmer.remove(), 500);
+  if (r.error) return showSheet(`<p class="sheet-msg">${r.error}</p>`, true);
+  if (r.job.status === 'done') return finishJob(r.job);
+  // only show the generating state if it takes longer than a second
+  setTimeout(() => syncJobs([r.job]), 1000);
+  poll();
 }
+
+function jobVisuals(job) {
+  let ui = jobUI.get(job.id);
+  if (!ui) {
+    const card = document.createElement('button');
+    card.className = 'card generating';
+    card.innerHTML = '<img alt=""><span class="dots"></span>';
+    card.querySelector('img').src = job.image;
+    card.addEventListener('click', async () => {
+      if (!card.classList.contains('failed')) return;
+      card.classList.remove('failed');
+      await postJSON('/api/garment/add', job); // retry: resumes, never re-pays for a finished render
+      poll();
+    });
+    const shimmer = document.createElement('div');
+    shimmer.className = 'gen-shimmer';
+    const [b0, b1] = BAND[job.slot] || [0, 1];
+    Object.assign(shimmer.style, { top: `${b0 * 100}%`, height: `${(b1 - b0) * 100}%` });
+    shimmer.setAttribute('role', 'status');
+    shimmer.setAttribute('aria-label', `Rendering ${job.name} on you`);
+    ui = { card, shimmer, slot: job.slot };
+    jobUI.set(job.id, ui);
+  }
+  const row = closetEl.querySelector(`.slot-items[data-slot="${job.slot}"]`) || closetEl;
+  if (!ui.card.isConnected) row.appendChild(ui.card);
+  return ui;
+}
+
+function syncJobs(jobs) {
+  for (const job of jobs) {
+    if (job.status === 'done') { if (jobUI.has(job.id)) finishJob(job); continue; }
+    const ui = jobVisuals(job);
+    const failed = job.status === 'failed';
+    ui.card.classList.toggle('failed', failed);
+    ui.card.title = failed ? `${job.name}: ${job.error}. Click to retry.` : job.name;
+    if (failed) ui.shimmer.remove(); else if (!ui.shimmer.isConnected) model.appendChild(ui.shimmer);
+  }
+}
+
+async function finishJob(job) {
+  const ui = jobUI.get(job.id);
+  jobUI.delete(job.id);
+  closet = await fetch('/closet/closet.json', { cache: 'no-store' }).then((x) => x.json());
+  buildCloset();
+  // the closet was rebuilt: put still-pending cards back in their rows
+  for (const o of jobUI.values()) (closetEl.querySelector(`.slot-items[data-slot="${o.slot}"]`) || closetEl).appendChild(o.card);
+  if (job.item) wear(job.item.slot, job.item.id);
+  if (ui) { ui.shimmer.classList.add('done'); setTimeout(() => ui.shimmer.remove(), 500); } // dots fade out as it appears
+  poll();
+}
+
+function poll() {
+  if (polling) return;
+  polling = setInterval(async () => {
+    const { jobs = [] } = await fetch('/api/garment/jobs').then((x) => x.json()).catch(() => ({}));
+    syncJobs(jobs);
+    const active = jobs.some((j) => ['queued', 'generating', 'cutting'].includes(j.status));
+    if (!active && ![...jobUI.values()].length) { clearInterval(polling); polling = null; }
+  }, 2000);
+}
+
+// On load: show anything still in progress (or failed) from before a reload.
+fetch('/api/garment/jobs').then((x) => x.json()).then(({ jobs = [] }) => {
+  const pending = jobs.filter((j) => j.status !== 'done');
+  if (pending.length) { syncJobs(pending); poll(); }
+}).catch(() => {});
