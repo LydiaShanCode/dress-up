@@ -327,20 +327,31 @@ async function finishJob(job) {
   buildCloset();
   // the closet was rebuilt: put still-pending cards back in their rows
   for (const o of jobUI.values()) (closetEl.querySelector(`.slot-items[data-slot="${o.slot}"]`) || closetEl).appendChild(o.card);
-  if (job.item) wear(job.item.slot, job.item.id);
+  const item = job.item || closet.items.find((i) => i.id === job.id);
+  if (item) wear(item.slot, item.id);
   if (ui) { ui.shimmer.classList.add('done'); setTimeout(() => ui.shimmer.remove(), 500); } // dots fade out as it appears
   poll();
 }
 
+async function checkJobs() {
+  const r = await fetch('/api/garment/jobs').then((x) => x.json()).catch(() => null);
+  if (!r) return;
+  const jobs = r.jobs || [];
+  syncJobs(jobs);
+  // A job we're showing that's no longer listed finished a while ago (e.g. this tab's timers
+  // were slowed while in the background): finish it from the closet.
+  for (const id of [...jobUI.keys()]) if (!jobs.some((j) => j.id === id)) finishJob({ id });
+  const active = jobs.some((j) => ['queued', 'generating', 'cutting'].includes(j.status));
+  if (!active && !jobUI.size && polling) { clearInterval(polling); polling = null; }
+}
+
 function poll() {
   if (polling) return;
-  polling = setInterval(async () => {
-    const { jobs = [] } = await fetch('/api/garment/jobs').then((x) => x.json()).catch(() => ({}));
-    syncJobs(jobs);
-    const active = jobs.some((j) => ['queued', 'generating', 'cutting'].includes(j.status));
-    if (!active && ![...jobUI.values()].length) { clearInterval(polling); polling = null; }
-  }, 2000);
+  polling = setInterval(checkJobs, 2000);
 }
+
+// Coming back to the tab: catch up right away.
+document.addEventListener('visibilitychange', () => { if (!document.hidden && jobUI.size) checkJobs(); });
 
 // On load: show anything still in progress (or failed) from before a reload.
 fetch('/api/garment/jobs').then((x) => x.json()).then(({ jobs = [] }) => {
