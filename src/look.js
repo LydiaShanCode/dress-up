@@ -42,7 +42,7 @@ function render() {
   const worn = SLOTS.map(([s]) => closet.items.find((i) => i.id === outfit[s])).filter(Boolean).sort((a, b) => a.z - b.z);
   draw(worn);
   cap.innerHTML = worn.length
-    ? worn.slice().sort((a, b) => b.z - a.z).map((i) => (i.url ? `<a class="what" href="${i.url}" target="_blank" rel="noopener">${i.name}</a>` : `<span class="what">${i.name}</span>`)).join('')
+    ? worn.slice().sort((a, b) => b.z - a.z).map((i) => (/^https?:/.test(i.url || "") ? `<a class="what" href="${i.url}" target="_blank" rel="noopener">${i.name}</a>` : `<span class="what">${i.name}</span>`)).join('')
     : '';
   canvas.setAttribute('aria-label', worn.length ? `You wearing ${worn.map((i) => i.name).join(', ')}` : 'You in a black sports bra and black shorts');
   for (const b of closetEl.querySelectorAll('.card')) b.setAttribute('aria-pressed', String(outfit[b.dataset.slot] === b.dataset.id));
@@ -210,7 +210,7 @@ const droppedUrl = (dt) => {
   const text = dt.getData('text/plain');
   return [uri, href, text].find((u) => u && /^https?:\/\//.test(u.trim()))?.trim();
 };
-const isLinkDrag = (e) => !drag && [...e.dataTransfer.types].some((t) => t === 'text/uri-list' || t === 'text/plain' || t === 'text/html');
+const isLinkDrag = (e) => !drag && [...e.dataTransfer.types].some((t) => t === 'Files' || t === 'text/uri-list' || t === 'text/plain' || t === 'text/html');
 let dragDepth = 0;
 window.addEventListener('dragenter', (e) => { if (isLinkDrag(e)) { dragDepth++; stage.classList.add('link-over'); } });
 window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; stage.classList.remove('link-over'); } });
@@ -219,13 +219,31 @@ window.addEventListener('drop', async (e) => {
   e.preventDefault();
   dragDepth = 0;
   stage.classList.remove('link-over');
+  const file = [...e.dataTransfer.files].find((f) => f.type.startsWith('image/'));
+  if (file) return addFromImage(file);
   const url = droppedUrl(e.dataTransfer);
-  if (!url) return showSheet('<p class="sheet-msg">That drop had no product link. Drag the product photo or name from the shop tab.</p>', true);
-  const r = await postJSON('/api/garment/preview', { url });
+  if (!url) return showSheet('<p class="sheet-msg">Nothing to add in that drop.</p>', true);
+  // a bare image address (dragged picture) goes straight to the image path
+  if (/\.(png|jpe?g|webp|avif)(\?|$)/i.test(url)) return handleResult(await postJSON('/api/garment/image', { url }));
+  handleResult(await postJSON('/api/garment/preview', { url }));
+});
+
+// Paste a screenshot (⌘V) straight from the clipboard.
+window.addEventListener('paste', (e) => {
+  const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
+  if (file) { e.preventDefault(); addFromImage(file); }
+});
+
+async function addFromImage(file) {
+  const data = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(file); });
+  handleResult(await postJSON('/api/garment/image', { data, mime: file.type }));
+}
+
+function handleResult(r) {
   if (r.error) return showSheet(`<p class="sheet-msg">${r.error}</p>`, true);
   if (r.owned) { sheet.hidden = true; wear(r.item.slot, r.item.id); return; } // already in your closet: free
   addGarment(r); // new: add straight away (cost is known, ~$0.07)
-});
+}
 
 const postJSON = (u, body) => fetch(u, { method: 'POST', body: JSON.stringify(body) })
   .then((x) => x.json()).catch(() => ({ error: "The local server isn't running (npm run dev)." }));

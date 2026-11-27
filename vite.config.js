@@ -53,6 +53,23 @@ async function photoSlot(name, image) {
 }
 const guessSlot = async (name, image) => keywordSlot(name) || photoSlot(name, image);
 
+// For a screenshot/photo with no product page: name it and pick its slot from the picture.
+async function describePhoto(buf, mime) {
+  const key = envKey('GEMINI_API_KEY');
+  if (!key) return { name: 'New item', slot: 'top' };
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ contents: [{ parts: [
+        { text: 'This image shows a clothing product, possibly in a screenshot of a shop or worn by a model. Identify the ONE main item for sale. Reply only as JSON: {"slot": one of top|bottom|shoes|hat|eyewear, "name": short product description, e.g. "Black lace henley long sleeve" (max 6 words), "material": fabric if visible as text in the image, else null}.' },
+        { inline_data: { mime_type: mime, data: buf.toString('base64') } }] }],
+        generationConfig: { maxOutputTokens: 400, temperature: 0, responseMimeType: 'application/json' } }),
+    }).then((x) => x.json());
+    const out = JSON.parse(r.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text || '{}');
+    return { name: out.name || 'New item', slot: SLOT_ORDER.includes(out.slot) ? out.slot : 'top', material: out.material || null };
+  } catch { return { name: 'New item', slot: 'top', material: null }; }
+}
+
 const PROMPT = {
   top: (n) => `Replace only her black sports bra with the ${n} shown in image 2 (if a model wears it there, copy only the garment, not the model). Reproduce it faithfully: same color, fabric, fit, length, neckline, sleeves, prints and details. It sits naturally on her body; her arms stay exactly where they are.`,
   bottom: (n) => `Replace only her black shorts with the ${n} shown in image 2 (if a model wears it there, copy only the garment, not the model). Reproduce it faithfully: same color, wash, fabric, rise, fit, length, pockets and details. Because she is only 5'2", long legs bunch or stack naturally at the bottom. Keep her white socks visible below if the hem is above them.`,
@@ -74,13 +91,14 @@ const run = (cmd, args) => new Promise((res, rej) => execFile(cmd, args, { cwd: 
 
 async function readProduct(url) {
   if (!/^https?:\/\//i.test(url)) throw new Error('Not a web link');
-  const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en' } });
+  const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en' } }).catch(() => null);
+  if (!r || !r.ok) throw new Error("Couldn't read that page. Drop or paste a screenshot instead.");
   const html = await r.text();
   const meta = (p) => html.match(new RegExp(`<meta[^>]+property=["']og:${p}["'][^>]+content=["']([^"']+)`, 'i'))?.[1];
   const decode = (s) => s?.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&');
   let name = decode(meta('title') || html.match(/<title>([^<]*)/i)?.[1] || 'New item').replace(/^MUSINSA \| /, '').trim();
   let image = decode(meta('image'));
-  if (!image) throw new Error("Couldn't find a product photo on that page");
+  if (!image) throw new Error("Couldn't read that page. Drop or paste a screenshot instead.");
   image = image.replace(/_500\.(jpe?g|png)$/i, '_big.$1'); // Musinsa: larger photo
   return { name, image, material: findMaterial(html, decode) };
 }
@@ -118,13 +136,38 @@ function garmentApi() {
         } catch (e) { send(res, 400, { error: e.message }); }
       });
 
+      // An image instead of a product page: a dropped/pasted screenshot or a bare image link.
+      server.middlewares.use('/api/garment/image', async (req, res) => {
+        try {
+          const { data, mime = 'image/png', url } = await readJSON(req);
+          let buf, type = mime;
+          if (url) {
+            const r = await fetch(url, { headers: { 'User-Agent': UA } });
+            type = r.headers.get('content-type') || 'image/jpeg';
+            if (!r.ok || !type.startsWith('image/')) throw new Error('Not an image');
+            buf = Buffer.from(await r.arrayBuffer());
+          } else {
+            buf = Buffer.from(data, 'base64');
+          }
+          const hash = (await import('node:crypto')).createHash('sha1').update(buf).digest('hex').slice(0, 10);
+          const dirUp = path.join(ROOT, 'public/closet/uploads');
+          fs.mkdirSync(dirUp, { recursive: true });
+          const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
+          fs.writeFileSync(path.join(dirUp, `${hash}.${ext}`), buf);
+          const owned = closet().items.find((i) => i.id.startsWith(`image-${hash}-`));
+          if (owned) return send(res, 200, { owned: true, item: owned });
+          const d = await describePhoto(buf, type);
+          send(res, 200, { owned: false, id: `image-${hash}`, url: url || `upload:${hash}`, image: `/closet/uploads/${hash}.${ext}`, ...d, cost: 0.07 });
+        } catch (e) { send(res, 400, { error: e.message }); }
+      });
+
       // Queue a garment. Returns immediately; the work runs on its own (see processJob),
       // so reloading or closing the page can't lose it.
       server.middlewares.use('/api/garment/add', async (req, res) => {
         try {
           const { url, name, image, slot, material = null } = await readJSON(req);
           if (!PROMPT[slot]) throw new Error('Unsupported slot: ' + slot);
-          const id = idFor(url) + '-' + slot;
+          const id = (url.startsWith('upload:') ? `image-${url.slice(7)}` : /^https?:\/\/[^ ]+\.(png|jpe?g|webp)(\?|$)/i.test(url) ? `image-${(await import('node:crypto')).createHash('sha1').update(url).digest('hex').slice(0, 10)}` : idFor(url)) + '-' + slot;
           const owned = closet().items.find((i) => i.id === id);
           if (owned) return send(res, 200, { job: { id, status: 'done', item: owned } });
           const jobs = readJobs();
@@ -173,9 +216,13 @@ async function processJob(id) {
     fs.mkdirSync(dir, { recursive: true });
     if (!fs.existsSync(path.join(dir, '1-model.png'))) fs.copyFileSync(BASE, path.join(dir, '1-model.png'));
     if (!fs.existsSync(path.join(dir, '2-garment.jpg'))) {
-      const img = await fetch(job.image, { headers: { 'User-Agent': UA, Referer: job.url } });
-      if (!img.ok) throw new Error("Couldn't download the product photo");
-      fs.writeFileSync(path.join(dir, '2-garment.jpg'), Buffer.from(await img.arrayBuffer()));
+      if (job.image.startsWith('/')) {
+        fs.copyFileSync(path.join(ROOT, 'public', job.image), path.join(dir, '2-garment.jpg'));
+      } else {
+        const img = await fetch(job.image, { headers: { 'User-Agent': UA, Referer: job.url } });
+        if (!img.ok) throw new Error("Couldn't download the product photo");
+        fs.writeFileSync(path.join(dir, '2-garment.jpg'), Buffer.from(await img.arrayBuffer()));
+      }
     }
     if (!fs.existsSync(path.join(dir, 'PROMPT.txt'))) {
       fs.writeFileSync(path.join(dir, 'PROMPT.txt'), `Generated by the drop-to-closet flow.\n${'-'.repeat(40)}\n${KEEP}\n\n${PROMPT[job.slot](job.name)}\n\n${MATERIAL(job.material)}\n\nRealistic fabric folds. Photorealistic.\n`);
