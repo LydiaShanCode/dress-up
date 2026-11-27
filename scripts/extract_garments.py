@@ -106,6 +106,17 @@ def ghost_main(a):
             keep[labs == i] = 1
     keep = cv2.dilate(keep, np.ones((5, 5), np.uint8))
     alpha = (alpha * keep).astype(np.uint8)
+    # Edge pixels are blends of garment + green. Recolor a thin edge ring from the garment's own
+    # nearby interior colors, then pull the edge in a pixel and soften it.
+    interior = cv2.erode((alpha > 230).astype(np.float32), np.ones((7, 7), np.uint8))
+    fl = img.astype(np.float32)
+    num = cv2.GaussianBlur(fl * interior[..., None], (0, 0), 3)
+    den = cv2.GaussianBlur(interior, (0, 0), 3)[..., None]
+    fill = num / np.maximum(den, 1e-3)
+    ring = ((alpha > 8) & (interior < 0.5) & (den[..., 0] > 0.02))
+    img = img.copy()
+    img[ring] = np.clip(fill[ring], 0, 255).astype(np.uint8)
+    alpha = cv2.GaussianBlur(cv2.erode(alpha, np.ones((3, 3), np.uint8)), (3, 3), 0)
 
     os.makedirs(OUT, exist_ok=True)
     manifest_path = os.path.join(OUT, 'closet.json')
