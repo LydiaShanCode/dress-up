@@ -38,11 +38,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('folder')
     ap.add_argument('--provider', default='gemini', choices=['gemini', 'fal'])
-    ap.add_argument('--resolution', default='2K', choices=['0.5K', '1K', '2K', '4K'])
+    ap.add_argument('--resolution', default='1K', choices=['0.5K', '1K', '2K', '4K'])
     ap.add_argument('--aspect', default='9:16')
     ap.add_argument('--gemini-model', default=GEMINI_MODEL)
     ap.add_argument('--n', type=int, default=1, help='variations (each is billed)')
     ap.add_argument('--yes', action='store_true', help='skip the cost confirmation')
+    ap.add_argument('--cap', type=float, default=float(os.environ.get('MONTHLY_CAP', 5)),
+                    help='refuse to run past this many dollars this month (default $5, or MONTHLY_CAP)')
     a = ap.parse_args()
 
     folder = Path(a.folder)
@@ -53,6 +55,14 @@ def main():
         sys.exit('No numbered reference images in ' + str(folder))
 
     cost = PRICE[a.provider][a.resolution] * a.n
+    import json, datetime
+    log_path = ROOT / 'captures' / 'spend.json'
+    log = json.loads(log_path.read_text()) if log_path.exists() else []
+    month = datetime.date.today().strftime('%Y-%m')
+    spent = sum(e['usd'] for e in log if e['date'].startswith(month))
+    print(f'Spent this month: ${spent:.2f} of ${a.cap:.2f} cap')
+    if spent + cost > a.cap:
+        sys.exit(f'Over the monthly cap: this run (${cost:.2f}) would take you past ${a.cap:.2f}. Raise it with --cap.')
     print(f'{a.provider} · {a.gemini_model if a.provider == "gemini" else MODEL} · {a.n} image(s) at {a.resolution} · about ${cost:.2f}')
     for p in images:
         print('  ref', p.name)
@@ -60,6 +70,12 @@ def main():
         sys.exit('Cancelled, nothing spent.')
 
     load_key(KEYNAME[a.provider])
+
+    def record():
+        log.append({'date': datetime.date.today().isoformat(), 'job': folder.name, 'provider': a.provider,
+                    'resolution': a.resolution, 'images': a.n, 'usd': round(cost, 3)})
+        log_path.parent.mkdir(exist_ok=True)
+        log_path.write_text(json.dumps(log, indent=1))
 
     def out_path():
         n = len(list(folder.glob('RESULT*')))
@@ -74,6 +90,7 @@ def main():
         }, with_logs=False)
         for img in res['images']:
             out = out_path(); urllib.request.urlretrieve(img['url'], out); print('saved', out.relative_to(ROOT))
+        record()
     else:
         import base64, json, mimetypes, urllib.error
         # REST generateContent (key in a header, never in the URL)
@@ -97,6 +114,7 @@ def main():
             if not imgs:
                 sys.exit('No image returned: ' + json.dumps(res)[:400])
             out = out_path(); out.write_bytes(base64.b64decode(imgs[-1]['data'])); print('saved', out.relative_to(ROOT))
+        record()
 
 if __name__ == '__main__':
     main()
