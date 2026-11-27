@@ -23,7 +23,7 @@ from PIL import Image
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
 OUT = os.path.join(ROOT, 'public', 'closet')
-Z = {'bottom': 10, 'shoes': 15, 'top': 20, 'outer': 30}
+Z = {'shoes': 5, 'bottom': 10, 'top': 20, 'outer': 30}  # pant cuffs drape over shoes
 
 
 def load(path, size=None):
@@ -120,8 +120,7 @@ def main():
         if slot == 'top':
             m = (upper > 110).astype(np.uint8) * 255
         elif slot == 'bottom':
-            m = (lower > 110).astype(np.uint8) * 255
-            m[feet_top + int(h * 0.02):] = 0
+            m = (lower > 110).astype(np.uint8) * 255  # full length: cuffs sit over the shoes
         elif slot == 'shoes':
             # the person (not floor or shadow) below the ankles, minus the trouser legs/cuffs
             m = person.copy()
