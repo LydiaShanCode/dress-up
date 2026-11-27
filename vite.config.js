@@ -181,6 +181,45 @@ function garmentApi() {
         } catch (e) { send(res, 400, { error: e.message }); }
       });
 
+      // Remove from the closet: files move to captures/removed/ (recoverable); the render stays
+      // in captures/handoff/, so re-adding the same product is a free re-cut.
+      server.middlewares.use('/api/garment/remove', async (req, res) => {
+        try {
+          const { id } = await readJSON(req);
+          const c = closet();
+          const item = c.items.find((i) => i.id === id);
+          if (!item) return send(res, 404, { error: 'Not in the closet' });
+          const bin = path.join(ROOT, 'captures/removed', id);
+          fs.mkdirSync(bin, { recursive: true });
+          for (const src of [item.src, item.erase?.src].filter(Boolean)) {
+            const f = path.join(ROOT, 'public', src);
+            if (fs.existsSync(f)) fs.renameSync(f, path.join(bin, path.basename(f)));
+          }
+          fs.writeFileSync(path.join(bin, 'item.json'), JSON.stringify(item, null, 2));
+          c.items = c.items.filter((i) => i.id !== id);
+          fs.writeFileSync(CLOSET, JSON.stringify(c, null, 2));
+          send(res, 200, { removed: id });
+        } catch (e) { send(res, 400, { error: e.message }); }
+      });
+
+      // Undo a removal.
+      server.middlewares.use('/api/garment/restore', async (req, res) => {
+        try {
+          const { id } = await readJSON(req);
+          const bin = path.join(ROOT, 'captures/removed', id);
+          const item = JSON.parse(fs.readFileSync(path.join(bin, 'item.json'), 'utf8'));
+          for (const src of [item.src, item.erase?.src].filter(Boolean)) {
+            const f = path.join(bin, path.basename(src));
+            if (fs.existsSync(f)) fs.renameSync(f, path.join(ROOT, 'public', src));
+          }
+          const c = closet();
+          c.items = c.items.filter((i) => i.id !== id).concat(item);
+          fs.writeFileSync(CLOSET, JSON.stringify(c, null, 2));
+          fs.rmSync(bin, { recursive: true, force: true });
+          send(res, 200, { item });
+        } catch (e) { send(res, 400, { error: e.message }); }
+      });
+
       // Everything not yet finished (queued / generating / cutting / failed), for the page to show.
       server.middlewares.use('/api/garment/jobs', (req, res) => {
         const jobs = Object.values(readJobs()).filter((j) => j.status !== 'done' || Date.now() - Date.parse(j.finished || 0) < 60000);

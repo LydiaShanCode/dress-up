@@ -132,3 +132,16 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 
 .card.generating.failed { cursor: pointer; border-style: dashed; }
 .card.generating.failed .dots { animation: none; opacity: .25; }
+
+/* remove (×) on closet cards: appears on hover/focus */
+.card { position: relative; }
+.card-remove {
+  position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 9999px;
+  display: grid; place-items: center; background: #fff; color: #111; border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .08); opacity: 0; transition: opacity 80ms linear; cursor: pointer;
+}
+.card:hover .card-remove, .card:focus-visible .card-remove { opacity: 1; }
+.card-remove:hover { background: var(--surface); }
+@media (hover: none) { .card-remove { opacity: 1; } }
+.add-sheet.compact { width: auto; padding: 6px; top: 16px; bottom: auto; } /* clear of the product links */
+.add-sheet.compact .sheet-actions { margin: 0; }

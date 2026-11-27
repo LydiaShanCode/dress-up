@@ -73,7 +73,18 @@ function buildCloset() {
       b.title = it.name;
       b.innerHTML = `<img src="${it.src}" alt="${it.name}" draggable="false">`;
       b.addEventListener('pointerdown', (e) => startDrag(e, it, b.querySelector('img')));
-      b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(it); } });
+      b.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(it); }
+        if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeItem(it); }
+      });
+      const x = document.createElement('span');
+      x.className = 'card-remove';
+      x.setAttribute('role', 'button');
+      x.setAttribute('aria-label', `Remove ${it.name}`);
+      x.innerHTML = '<svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+      x.addEventListener('pointerdown', (e) => e.stopPropagation()); // don't start a drag
+      x.addEventListener('click', (e) => { e.stopPropagation(); removeItem(it); });
+      b.appendChild(x);
       row.appendChild(b);
     }
     group.appendChild(row);
@@ -336,3 +347,28 @@ fetch('/api/garment/jobs').then((x) => x.json()).then(({ jobs = [] }) => {
   const pending = jobs.filter((j) => j.status !== 'done');
   if (pending.length) { syncJobs(pending); poll(); }
 }).catch(() => {});
+
+// ---------- remove from closet (with undo) ----------
+let undoTimer = null;
+async function removeItem(it) {
+  const r = await postJSON('/api/garment/remove', { id: it.id });
+  if (r.error) return showSheet(`<p class="sheet-msg">${r.error}</p>`, true);
+  closet.items = closet.items.filter((i) => i.id !== it.id);
+  if (outfit[it.slot] === it.id) outfit[it.slot] = null;
+  buildCloset();
+  render();
+  sheet.innerHTML = '<div class="sheet-actions undo"><button data-act="undo">Undo</button></div>';
+  sheet.hidden = false;
+  sheet.classList.add('compact');
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => { sheet.hidden = true; sheet.classList.remove('compact'); }, 8000);
+  sheet.querySelector('[data-act="undo"]').addEventListener('click', async () => {
+    clearTimeout(undoTimer);
+    sheet.hidden = true; sheet.classList.remove('compact');
+    const back = await postJSON('/api/garment/restore', { id: it.id });
+    if (back.error) return showSheet(`<p class="sheet-msg">${back.error}</p>`, true);
+    closet.items.push(back.item);
+    buildCloset();
+    render();
+  });
+}
