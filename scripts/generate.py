@@ -39,7 +39,7 @@ def main():
     ap.add_argument('folder')
     ap.add_argument('--provider', default='gemini', choices=['gemini', 'fal'])
     ap.add_argument('--resolution', default='1K', choices=['0.5K', '1K', '2K', '4K'])
-    ap.add_argument('--aspect', default='9:16')
+    ap.add_argument('--aspect', default='auto', help="'auto' keeps image 1's shape (needed for layers to line up)")
     ap.add_argument('--gemini-model', default=GEMINI_MODEL)
     ap.add_argument('--n', type=int, default=1, help='variations (each is billed)')
     ap.add_argument('--yes', action='store_true', help='skip the cost confirmation')
@@ -99,7 +99,7 @@ def main():
                 {'inline_data': {'mime_type': mimetypes.guess_type(p.name)[0] or 'image/png',
                                  'data': base64.b64encode(p.read_bytes()).decode()}} for p in images]}],
             'generationConfig': {'responseModalities': ['IMAGE'],
-                                 'imageConfig': {'aspectRatio': a.aspect, 'imageSize': a.resolution}},
+                                 'imageConfig': ({'imageSize': a.resolution} if a.aspect == 'auto' else {'aspectRatio': a.aspect, 'imageSize': a.resolution})},
         }
         url = f'https://generativelanguage.googleapis.com/v1beta/models/{a.gemini_model}:generateContent'
         for _ in range(a.n):

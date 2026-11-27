@@ -32,22 +32,39 @@ const KEY = 'dressup.outfit.v1';
 let closet = { items: [] };
 let outfit = {};
 
+// Composite on a canvas: your cutout → erase what worn garments hide → garments on top.
+const canvas = document.getElementById('model-canvas');
+const ctx = canvas.getContext('2d');
+const cache = new Map();
+const loadImg = (src) => {
+  if (!cache.has(src)) cache.set(src, new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; }));
+  return cache.get(src);
+};
+let drawToken = 0;
+
+async function draw(worn) {
+  const token = ++drawToken;
+  const base = await loadImg(closet.base || '/looks/base.png');
+  const layers = await Promise.all(worn.map(async (it) => ({ it, img: await loadImg(it.src), erase: it.erase && await loadImg(it.erase.src) })));
+  if (token !== drawToken) return; // a newer outfit was picked meanwhile
+  const W = base.naturalWidth, H = base.naturalHeight;
+  canvas.width = W; canvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(base, 0, 0);
+  const at = (box) => [box[0] * W, box[1] * H, box[2] * W, box[3] * H];
+  ctx.globalCompositeOperation = 'destination-out';
+  for (const l of layers) if (l.erase) ctx.drawImage(l.erase, ...at(l.it.erase.box));
+  ctx.globalCompositeOperation = 'source-over';
+  for (const l of layers) ctx.drawImage(l.img, ...at(l.it.box));
+}
+
 function render() {
-  for (const el of model.querySelectorAll('.layer')) el.remove();
   const worn = SLOTS.map(([s]) => closet.items.find((i) => i.id === outfit[s])).filter(Boolean).sort((a, b) => a.z - b.z);
-  for (const it of worn) {
-    const [x, y, w, h] = it.box;
-    const img = document.createElement('img');
-    img.className = 'layer';
-    img.src = it.src;
-    img.alt = '';
-    Object.assign(img.style, { left: `${x * 100}%`, top: `${y * 100}%`, width: `${w * 100}%`, height: `${h * 100}%`, zIndex: it.z });
-    model.appendChild(img);
-  }
+  draw(worn);
   cap.innerHTML = worn.length
     ? worn.slice().sort((a, b) => b.z - a.z).map((i) => (i.url ? `<a class="what" href="${i.url}" target="_blank" rel="noopener">${i.name}</a>` : `<span class="what">${i.name}</span>`)).join('')
     : '<span class="what">Black sports bra, black shorts</span>';
-  model.querySelector('.base').alt = worn.length ? `You wearing ${worn.map((i) => i.name).join(', ')}` : 'You in a black sports bra and black shorts';
+  canvas.setAttribute('aria-label', worn.length ? `You wearing ${worn.map((i) => i.name).join(', ')}` : 'You in a black sports bra and black shorts');
   for (const b of closetEl.querySelectorAll('button')) b.setAttribute('aria-pressed', String((outfit[b.dataset.slot] ?? null) === (b.dataset.id || null)));
   localStorage.setItem(KEY, JSON.stringify(outfit));
 }
@@ -84,7 +101,7 @@ function buildCloset() {
   }
 }
 
-fetch('/closet/closet.json').then((r) => (r.ok ? r.json() : { items: [] })).then((c) => {
+fetch('/closet/closet.json').then((r) => r.json()).catch(() => ({ items: [] })).then((c) => {
   closet = c;
   if (!closet.items.length) { closetEl.hidden = true; return render(); }
   const saved = JSON.parse(localStorage.getItem(KEY) || 'null');

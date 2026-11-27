@@ -86,6 +86,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--base', required=True)
     ap.add_argument('--tryon', required=True)
+    ap.add_argument('--base-cutout', help='RGBA cutout of the base; its alpha is the base body mask')
     ap.add_argument('--piece', action='append', required=True, help='slot:id:name[:url]')
     a = ap.parse_args()
 
@@ -96,7 +97,11 @@ def main():
     from rembg import new_session
     hs = new_session('u2net_human_seg')
     seg = lambda im: (np.array(hs.predict(Image.fromarray(im))[0].convert('L').resize((w, h))) > 127).astype(np.uint8) * 255
-    person, base_person = seg(img), seg(base)
+    person = seg(img)
+    if a.base_cutout:
+        base_person = (np.array(Image.open(a.base_cutout).convert('RGBA').resize((w, h)))[:, :, 3] > 127).astype(np.uint8) * 255
+    else:
+        base_person = seg(base)
     # body visible in the base photo that the try-on replaced with backdrop (e.g. feet that moved)
     uncovered = cv2.bitwise_and(base_person, cv2.bitwise_not(cv2.dilate(person, np.ones((5, 5), np.uint8))))
     diff = changed(base, img)
@@ -113,7 +118,6 @@ def main():
     for spec in a.piece:
         slot, pid, name, *url = spec.split(':', 3)
         if slot == 'top':
-            m = cv2.max(upper, (full > 127).astype(np.uint8) * 0)
             m = (upper > 110).astype(np.uint8) * 255
         elif slot == 'bottom':
             m = (lower > 110).astype(np.uint8) * 255
@@ -150,13 +154,26 @@ def main():
         # edges: drop border pixels that are identical to the base (background, skin)
         edge = cv2.subtract(m, cv2.erode(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))))
         m[(edge > 0) & (diff == 0)] = 0
-        alpha = cv2.GaussianBlur(m, (5, 5), 0)
-        x, y, bw, bh = cv2.boundingRect((alpha > 8).astype(np.uint8))
-        rgba = np.dstack([img, alpha])[y:y + bh, x:x + bw]
-        fname = f'{pid}.png'
-        Image.fromarray(rgba).save(os.path.join(OUT, fname), optimize=True)
+        # Split into what the garment PAINTS (try-on body/garment pixels) and what it ERASES from
+        # the base cutout (base body where the try-on shows backdrop, e.g. feet that moved).
+        on_body = cv2.dilate(person, np.ones((3, 3), np.uint8)) > 0
+        erase = ((m > 0) & ~on_body & (base_person > 0)).astype(np.uint8) * 255
+        paint = ((m > 0) & on_body).astype(np.uint8) * 255
+
+        def save(mask, fname, rgb=True):
+            alpha = cv2.GaussianBlur(mask, (5, 5), 0)
+            if not (alpha > 8).any():
+                return None
+            x, y, bw, bh = cv2.boundingRect((alpha > 8).astype(np.uint8))
+            col = img if rgb else np.zeros_like(img)
+            Image.fromarray(np.dstack([col, alpha])[y:y + bh, x:x + bw]).save(os.path.join(OUT, fname), optimize=True)
+            return {'src': f'/closet/{fname}', 'box': [round(x / w, 5), round(y / h, 5), round(bw / w, 5), round(bh / h, 5)]}
+
+        layer = save(paint, f'{pid}.png')
+        x, y = int(layer['box'][0] * w), int(layer['box'][1] * h)
+        bw, bh = int(layer['box'][2] * w), int(layer['box'][3] * h)
         item = {'id': pid, 'slot': slot, 'name': name, 'url': url[0] if url else None,
-                'src': f'/closet/{fname}', 'box': [round(x / w, 5), round(y / h, 5), round(bw / w, 5), round(bh / h, 5)], 'z': Z[slot]}
+                **layer, 'erase': save(erase, f'{pid}-erase.png', rgb=False), 'z': Z[slot]}
         closet['items'] = [i for i in closet['items'] if i['id'] != pid] + [item]
         print(f'  {slot:6} {pid}: box {x},{y} {bw}x{bh}')
 
