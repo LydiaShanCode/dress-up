@@ -58,9 +58,8 @@ html, body { margin: 0; height: 100%; background: var(--background); }
 }
 .closet::-webkit-scrollbar { display: none; }
 .closet[hidden] { display: none; }
-.closet-title { margin: 0; font-size: 13px; font-weight: 600; }
-.slot-label { margin: 0 0 6px; font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--text-secondary); }
-.slot-items { display: grid; grid-template-columns: repeat(2, 72px); gap: 8px; }
+.slot-items:empty { display: none; }
+.slot-items { display: flex; flex-wrap: wrap; gap: 8px; max-width: 152px; }
 .card {
   width: 72px; height: 88px; padding: 6px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); cursor: grab; touch-action: none; user-select: none;
@@ -80,7 +79,6 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 
 @media (max-width: 760px) {
   .closet { top: auto; bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); flex-direction: row; gap: 12px; padding: 8px 12px; max-width: calc(100% - 32px); overflow-x: auto; }
-  .closet-title { display: none; }
   .slot-items { grid-template-columns: none; grid-auto-flow: column; }
   .card { width: 52px; height: 64px; }
 }
@@ -102,9 +100,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 /* drop a product link from another tab */
 .drop-hint { position: absolute; inset: 12px; z-index: 70; display: none; place-items: center; pointer-events: none;
   border: 1px dashed #111111; border-radius: 16px; background: rgba(255, 255, 255, .7); }
-.drop-hint p { font-size: 14px; font-weight: 500; }
 .look-stage.link-over .drop-hint { display: grid; }
-.slot-empty { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--text-secondary); }
 
 /* status / error sheet */
 .add-sheet { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 80; width: min(360px, calc(100% - 32px));

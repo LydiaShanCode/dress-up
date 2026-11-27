@@ -43,7 +43,7 @@ function render() {
   draw(worn);
   cap.innerHTML = worn.length
     ? worn.slice().sort((a, b) => b.z - a.z).map((i) => (i.url ? `<a class="what" href="${i.url}" target="_blank" rel="noopener">${i.name}</a>` : `<span class="what">${i.name}</span>`)).join('')
-    : '<span class="what">Black sports bra, black shorts</span>';
+    : '';
   canvas.setAttribute('aria-label', worn.length ? `You wearing ${worn.map((i) => i.name).join(', ')}` : 'You in a black sports bra and black shorts');
   for (const b of closetEl.querySelectorAll('.card')) b.setAttribute('aria-pressed', String(outfit[b.dataset.slot] === b.dataset.id));
   localStorage.setItem(KEY, JSON.stringify(outfit));
@@ -58,21 +58,19 @@ const toggle = (it) => wear(it.slot, isWorn(it) ? null : it.id);
 
 // ---------- closet: cards you drag onto the model (or click) ----------
 function buildCloset() {
-  closetEl.innerHTML = '<p class="closet-title">Closet</p>';
-  for (const [slot, label] of SLOTS) {
+  closetEl.innerHTML = '';
+  for (const [slot] of SLOTS) {
     const items = closet.items.filter((i) => i.slot === slot);
     const group = document.createElement('div');
     group.className = 'slot';
-    group.innerHTML = `<p class="slot-label">${label}</p>`;
     const row = document.createElement('div');
     row.className = 'slot-items';
     row.dataset.slot = slot;
-    if (!items.length) row.innerHTML = '<p class="slot-empty">Drop a product link</p>';
     for (const it of items) {
       const b = document.createElement('button');
       b.className = 'card';
       b.dataset.slot = slot; b.dataset.id = it.id;
-      b.title = `${it.name}. Drag onto yourself, or click to wear`;
+      b.title = it.name;
       b.innerHTML = `<img src="${it.src}" alt="${it.name}" draggable="false">`;
       b.addEventListener('pointerdown', (e) => startDrag(e, it, b.querySelector('img')));
       b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(it); } });
@@ -200,7 +198,6 @@ fetch('/closet/closet.json').then((r) => r.json()).catch(() => ({ items: [] })).
 const stage = document.querySelector('.look-stage');
 const dropHint = document.createElement('div');
 dropHint.className = 'drop-hint';
-dropHint.innerHTML = '<p>Drop to add to your closet</p>';
 stage.appendChild(dropHint);
 const sheet = document.createElement('div');
 sheet.className = 'add-sheet';
@@ -224,7 +221,6 @@ window.addEventListener('drop', async (e) => {
   stage.classList.remove('link-over');
   const url = droppedUrl(e.dataTransfer);
   if (!url) return showSheet('<p class="sheet-msg">That drop had no product link. Drag the product photo or name from the shop tab.</p>', true);
-  showSheet('<p class="sheet-msg">Reading the product…</p>');
   const r = await postJSON('/api/garment/preview', { url });
   if (r.error) return showSheet(`<p class="sheet-msg">${r.error}</p>`, true);
   if (r.owned) { sheet.hidden = true; wear(r.item.slot, r.item.id); return; } // already in your closet: free
@@ -261,7 +257,6 @@ async function addGarment(p) {
   ph.querySelector('img').src = p.image;
   const showTimer = setTimeout(() => {
     model.appendChild(shimmer);
-    row?.querySelector('.slot-empty')?.remove();
     (row || closetEl).appendChild(ph);
   }, 1000);
 
