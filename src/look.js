@@ -3,7 +3,7 @@ import './look.css';
 // ---------- closet ----------
 // The base photo never changes. Each garment is a transparent layer cut out once (one AI
 // try-on), positioned in base-photo coordinates, so outfits are composed for free.
-const SLOTS = [['top', 'Top'], ['bottom', 'Bottom'], ['shoes', 'Shoes']];
+const SLOTS = [['hat', 'Hat'], ['eyewear', 'Eyewear'], ['top', 'Top'], ['bottom', 'Bottom'], ['shoes', 'Shoes']];
 const model = document.getElementById('model');
 const cap = document.getElementById('look-caption');
 const closetEl = document.getElementById('closet');
@@ -237,7 +237,7 @@ function showSheet(html, dismissable = false) {
 }
 
 // Vertical band of the body each slot changes (fractions of the model's height).
-const BAND = { top: [0.17, 0.56], bottom: [0.42, 0.97], shoes: [0.84, 1] };
+const BAND = { hat: [0, 0.12], eyewear: [0.07, 0.12], top: [0.17, 0.56], bottom: [0.42, 0.97], shoes: [0.84, 1] };
 
 // ---------- jobs: adding a garment is a saved job on your Mac, so reloads can't lose it ----------
 const jobUI = new Map(); // id → { card, shimmer }

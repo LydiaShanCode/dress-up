@@ -23,7 +23,7 @@ from PIL import Image
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
 OUT = os.path.join(ROOT, 'public', 'closet')
-Z = {'shoes': 5, 'bottom': 10, 'top': 20, 'outer': 30}  # pant cuffs drape over shoes
+Z = {'shoes': 5, 'bottom': 10, 'top': 20, 'outer': 30, 'eyewear': 35, 'hat': 40}  # cuffs over shoes; hats over hair
 
 
 def load(path, size=None):
@@ -141,9 +141,25 @@ def main():
             n, labs, stats, _ = cv2.connectedComponentsWithStats(m)
             keep = sorted(range(1, n), key=lambda i: -stats[i, cv2.CC_STAT_AREA])[:2]  # two shoes
             m = np.isin(labs, keep).astype(np.uint8) * 255
+        elif slot in ('eyewear', 'hat'):
+            # Head accessories: the clothing segmenter doesn't know them, so take what changed
+            # around the head between the base and the render (the render only added this item).
+            prow = np.where(base_person.any(1))[0]
+            y0 = int(prow[0]) if len(prow) else 0
+            hh = int(h * 0.13)                      # head height in this full-body framing
+            hcols = np.where(base_person[y0:y0 + hh].any(0))[0]
+            x0, x1 = (int(hcols[0]), int(hcols[-1])) if len(hcols) else (0, w)
+            padx = int((x1 - x0) * 0.35)
+            band = np.zeros_like(diff)
+            if slot == 'eyewear':
+                band[y0 + int(hh * 0.28):y0 + int(hh * 0.66), max(0, x0 - padx):x1 + padx] = 255
+            else:
+                band[max(0, y0 - int(h * 0.05)):y0 + int(hh * 0.62), max(0, x0 - padx):x1 + padx] = 255
+            m = cv2.bitwise_and(cv2.dilate(diff, np.ones((3, 3), np.uint8)), band)
+            m = cv2.bitwise_and(m, cv2.dilate(person, np.ones((5, 5), np.uint8)))  # on her, not the backdrop
         else:
             raise SystemExit('unknown slot ' + slot)
-        m = clean(m)
+        m = clean(m, 11, 250) if slot in ('eyewear', 'hat') else clean(m)
         # cover patch: hide base-body pixels near this garment that the try-on shows as backdrop
         rows = np.where(m.any(1))[0]
         if len(rows):
@@ -156,7 +172,7 @@ def main():
             # anything that changed here (moved feet, wider/narrower limbs) takes the try-on's pixels
             changed_here = cv2.dilate(cv2.max(diff, uncovered), np.ones((7, 7), np.uint8))
             # never take pixels that belong to a different garment in the same try-on
-            others = {'top': lower, 'bottom': upper, 'shoes': cv2.max(upper, lower)}[slot]
+            others = {'top': lower, 'bottom': upper, 'shoes': cv2.max(upper, lower)}.get(slot, cv2.max(upper, lower))
             changed_here[cv2.dilate((others > 90).astype(np.uint8), np.ones((15, 15), np.uint8)) > 0] = 0
             # patches only ever cover the base body (never backdrop-to-backdrop lighting noise)
             changed_here = cv2.bitwise_and(changed_here, cv2.dilate(base_person, np.ones((9, 9), np.uint8)))

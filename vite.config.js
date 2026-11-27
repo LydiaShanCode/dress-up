@@ -17,15 +17,47 @@ const BASE_CUTOUT = path.join(ROOT, 'captures/base-v4-cutout.png');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131 Safari/537.36';
 
 const SLOT_WORDS = {
+  eyewear: /\b(sunglass(es)?|glasses|eyewear|eyeglass(es)?|shades|spectacles|optical|frames?|goggles)\b/i,
+  hat: /\b(hats?|caps?|beanies?|bucket|berets?|visors?|bonnets?|balaclavas?|fedoras?|trucker|snapback|headwear|hood(?!ie))\b/i,
   shoes: /\b(sneakers?|shoes?|boots?|loafers?|sandals?|heels?|mules?|flats?|slippers?|trainers?|clogs?)\b/i,
   bottom: /\b(jeans|pants|trousers|joggers|sweatpants|skirts?|shorts|slacks|leggings|denim|cargos?|culottes)\b/i,
   top: /\b(t-?shirts?|tees?|tops?|shirts?|blouses?|knits?|sweaters?|cardigans?|hoodies?|sweatshirts?|tanks?|camis?|camisoles?|long ?sleeves?|henleys?|polos?|bustiers?|corsets?|jackets?|coats?|blazers?|vests?|jumpers?|pullovers?)\b/i,
 };
-const guessSlot = (name) => ['shoes', 'bottom', 'top'].find((s) => SLOT_WORDS[s].test(name)) || 'top';
+const SLOT_ORDER = ['eyewear', 'hat', 'shoes', 'bottom', 'top'];
+const keywordSlot = (name) => SLOT_ORDER.find((s) => SLOT_WORDS[s].test(name));
+
+// When the name gives no hint ("ARGON C1 BLACK"), ask Gemini to look at the product photo.
+// One text answer from a small model: a tiny fraction of a cent.
+function envKey(name) {
+  const env = path.join(ROOT, '.env');
+  if (!fs.existsSync(env)) return null;
+  const line = fs.readFileSync(env, 'utf8').split('\n').find((l) => l.startsWith(name + '='));
+  return line ? line.slice(name.length + 1).trim().replace(/^["']|["']$/g, '') : null;
+}
+async function photoSlot(name, image) {
+  const key = envKey('GEMINI_API_KEY');
+  if (!key) return 'top';
+  try {
+    const img = await fetch(image, { headers: { 'User-Agent': UA } });
+    const data = Buffer.from(await img.arrayBuffer()).toString('base64');
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ contents: [{ parts: [
+        { text: `Product: "${name}". Which ONE category is the product for sale in this photo? Answer with one word: top, bottom, shoes, hat, eyewear.` },
+        { inline_data: { mime_type: img.headers.get('content-type') || 'image/jpeg', data } }] }],
+        generationConfig: { maxOutputTokens: 200, temperature: 0 } }),
+    }).then((x) => x.json());
+    const word = (r.candidates?.[0]?.content?.parts?.[0]?.text || '').toLowerCase();
+    return SLOT_ORDER.find((s) => word.includes(s)) || 'top';
+  } catch { return 'top'; }
+}
+const guessSlot = async (name, image) => keywordSlot(name) || photoSlot(name, image);
 
 const PROMPT = {
   top: (n) => `Replace only her black sports bra with the ${n} shown in image 2 (if a model wears it there, copy only the garment, not the model). Reproduce it faithfully: same color, fabric, fit, length, neckline, sleeves, prints and details. It sits naturally on her body; her arms stay exactly where they are.`,
   bottom: (n) => `Replace only her black shorts with the ${n} shown in image 2 (if a model wears it there, copy only the garment, not the model). Reproduce it faithfully: same color, wash, fabric, rise, fit, length, pockets and details. Because she is only 5'2", long legs bunch or stack naturally at the bottom. Keep her white socks visible below if the hem is above them.`,
+  eyewear: (n) => `Put the ${n} shown in image 2 on her face (if a person wears them there, copy only the eyewear). They sit naturally on the bridge of her nose and over her ears, sized correctly for her face, level and centered. Reproduce the frame shape, thickness, color, finish, lens tint and any logo exactly. Keep her face, expression, eyebrows and hair otherwise unchanged.`,
+  hat: (n) => `Put the ${n} shown in image 2 on her head (if a person wears it there, copy only the hat). It sits naturally at a realistic size and angle for her head; her hair falls naturally out from under it at the sides and back, keeping its length and color. Reproduce the hat's shape, brim, crown, material, color, stitching and any logo exactly. Keep her face and expression unchanged.`,
   shoes: (n) => `Put the ${n} shown in image 2 on her feet, worn over her white ankle socks, exactly where her feet are now. Reproduce them faithfully: same color, material, shape and details.`,
 };
 const KEEP = `Image 1 is the person. Keep image 1 EXACTLY the same everywhere except that one garment: same face, hair, skin tone, body size and proportions, same pose and arm position as image 1, same smile, same position in the frame, same camera, same plain white backdrop and lighting, and all her other clothing unchanged. Output an image with exactly the same size, framing and composition as image 1.`;
@@ -82,7 +114,7 @@ function garmentApi() {
           const owned = closet().items.find((i) => i.url === url || i.id.startsWith(id + '-') || i.id === id);
           if (owned) return send(res, 200, { owned: true, item: owned });
           const p = await readProduct(url);
-          send(res, 200, { owned: false, id, url, ...p, slot: guessSlot(p.name), cost: 0.07 });
+          send(res, 200, { owned: false, id, url, ...p, slot: await guessSlot(p.name, p.image), cost: 0.07 });
         } catch (e) { send(res, 400, { error: e.message }); }
       });
 
