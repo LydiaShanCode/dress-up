@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dress Up — Fitting Room</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <main id="app">
+      <aside id="panel">
+        <header>
+          <p class="eyebrow">Dress Up · Fitting room</p>
+          <h1>Your <em>body</em>, to the inch</h1>
+          <p id="summary" class="summary"></p>
+        </header>
+        <form id="fields" autocomplete="off" onsubmit="return false"></form>
+        <footer>
+          <p class="note">✓ means the 3D model measures exactly your number. Weight shows what the model's volume would weigh.</p>
+          <button id="reset" type="button" class="ghost">Reset to my measurements</button>
+        </footer>
+      </aside>
+      <section id="stage">
+        <div class="toolbar">
+          <button data-view="0">Front</button>
+          <button data-view="90">Side</button>
+          <button data-view="180">Back</button>
+          <button data-view="-90">Side</button>
+          <span class="sep"></span>
+          <button id="spin">Turntable</button>
+          <button id="guides">Measurements</button>
+        </div>
+        <p class="hint">Drag to turn · scroll to zoom</p>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
