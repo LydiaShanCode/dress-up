@@ -85,19 +85,16 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
   .card { width: 52px; height: 64px; }
 }
 
-/* logo: debossed (pressed into the page) — darker fill, light edge below, faint shadow above */
+/* logo: debossed — the SVG #deboss filter turns star + word into one pressed-in shape
+   (flat fill, inner shadow on the top edges, light on the lower rim) */
 .logo {
   position: absolute; top: 20px; left: 24px; z-index: 60;
   display: flex; align-items: center; gap: 6px; pointer-events: none; user-select: none;
+  filter: url(#deboss);
 }
 .logo-word {
   font-family: 'Exposure', 'Geist', sans-serif; font-variation-settings: 'EXPO' 0;
-  font-size: 14px; line-height: 1; letter-spacing: -2px;
-  color: #e4e4e4;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, .95), 0 -1px 0 rgba(0, 0, 0, .14);
+  font-size: 14px; line-height: 1; letter-spacing: -2px; color: #000;
 }
-.logo-mark {
-  font-size: 14px; line-height: 1;
-  filter: grayscale(1) brightness(1.55) contrast(.55) drop-shadow(0 1px 0 rgba(255, 255, 255, .95)) drop-shadow(0 -1px 0 rgba(0, 0, 0, .16));
-}
+.logo-mark { font-size: 14px; line-height: 1; }
 @media (max-width: 760px) { .logo { top: 16px; left: 16px; } }

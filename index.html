@@ -12,6 +12,25 @@
     <main class="look-app">
 
       <section class="look-stage" aria-label="Your model">
+        <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+          <filter id="deboss" x="-20%" y="-40%" width="140%" height="180%" color-interpolation-filters="sRGB">
+            <!-- flat fill, a touch darker than the page -->
+            <feFlood flood-color="#e2e2e2" result="fillColor" />
+            <feComposite in="fillColor" in2="SourceAlpha" operator="in" result="fill" />
+            <!-- inner shadow along the top edges: shape minus itself shifted down -->
+            <feOffset in="SourceAlpha" dy="1.4" result="down" />
+            <feGaussianBlur in="down" stdDeviation="0.7" result="downBlur" />
+            <feComposite in="SourceAlpha" in2="downBlur" operator="out" result="topRim" />
+            <feFlood flood-color="#000" flood-opacity="0.32" result="shadeColor" />
+            <feComposite in="shadeColor" in2="topRim" operator="in" result="innerShade" />
+            <!-- light catching the lower rim, just outside the shape -->
+            <feOffset in="SourceAlpha" dy="1" result="below" />
+            <feComposite in="below" in2="SourceAlpha" operator="out" result="lowRim" />
+            <feFlood flood-color="#fff" flood-opacity="1" result="lightColor" />
+            <feComposite in="lightColor" in2="lowRim" operator="in" result="highlight" />
+            <feMerge><feMergeNode in="highlight" /><feMergeNode in="fill" /><feMergeNode in="innerShade" /></feMerge>
+          </filter>
+        </svg>
         <div class="logo" aria-label="Dress Up"><span class="logo-mark" aria-hidden="true">💫</span><span class="logo-word">Dress Up</span></div>
         <figure class="look">
           <div class="model" id="model">
