@@ -13,8 +13,8 @@ import crypto from 'node:crypto';
 const ROOT = process.cwd();
 const PY = path.join(ROOT, '.venv/bin/python');
 const CLOSET = path.join(ROOT, 'public/closet/closet.json');
-const BASE = path.join(ROOT, 'captures/base-v4.png');
-const BASE_CUTOUT = path.join(ROOT, 'captures/base-v4-cutout.png');
+const BASE = path.join(ROOT, 'captures/base-v5.png');
+const BASE_CUTOUT = path.join(ROOT, 'captures/base-v5-cutout.png');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131 Safari/537.36';
 
 const SLOT_WORDS = {
